@@ -455,7 +455,7 @@ function HomePage() {
               color: 'warning.dark'
             }}
           >
-            250 Grama üstüne ulaşan esanslar kesin alımdır, 250 grama ulaştığı taktirde üstü mühim değildir alım sonunda alınan miktar kadar sipariş geçilecektir.
+            250 Gram üstüne ulaşan esanslar kesin alımdır. 250 grama ulaştığı taktirde üstü mühim değildir, alım sonunda alınan miktar kadar sipariş geçilecektir.
           </Typography>
         </Paper>
       </Box>
