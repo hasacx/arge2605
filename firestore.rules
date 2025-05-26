@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Kullanıcıların kendi belgelerini okumasına izin ver
+    match /users/{userId} {
+      // Kullanıcılar kendi belgelerini okuyabilir, adminler tüm kullanıcıları okuyabilir
+      allow read: if request.auth != null; // Allow all authenticated users to read demands
+      allow create: if request.auth != null && request.auth.uid == userId; // Allow user to create their own document
+      allow update: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'); // Allow user to update their own document, or admin to update any
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; // Only admins can delete user documents
+    }
+
+    // Kimliği doğrulanmış kullanıcıların esansları okumasına izin ver
+    match /essences/{essenceId} {
+      allow read: if request.auth != null;
+      
+      // Adminler tüm alanları yazabilir (oluşturma, güncelleme, silme)
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Herhangi bir kimliği doğrulanmış kullanıcının YALNIZCA totalDemand alanını güncellemesine izin ver.
+      // Bu, admin olmayan kullanıcıların diğer alanları değiştirmesini engeller.
+      // Bu kural, adminler için olan genel 'write' kuralına ek olarak (OR ile) çalışır.
+      allow update: if request.auth != null 
+                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalDemand']);
+    }
+
+    // Talep kuralları
+    match /demands/{demandId} {
+      // Kullanıcıların kendi taleplerini oluşturmasına izin ver
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      
+      // Kimliği doğrulanmış tüm kullanıcıların tüm talepleri okumasına izin ver
+      allow read: if request.auth != null;
+      
+      // Kullanıcıların yalnızca kendi taleplerini güncellemesine ve silmesine izin ver
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      // Adminlerin tüm talepleri yazmasına (oluşturma, güncelleme, silme) izin ver
+      // Admin okuma izni yukarıdaki genel okuma kuralı tarafından zaten kapsanmaktadır.
+      allow write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}
