@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useFirebase } from '../firebase/FirebaseContext' // useFirebase hook provides subscribeToDemands
+import { useFirebase } from '../firebase/FirebaseContext'
 import {
   Box,
   Container,
@@ -19,11 +19,11 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  Checkbox,
+  Tooltip,
   IconButton,
   Collapse,
-  Chip,
-  Checkbox,
-  Tooltip
+  Chip
 } from '@mui/material'
 import MuiAlert from '@mui/material/Alert'
 import {
@@ -31,85 +31,33 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
-  CheckCircle as CheckCircleIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
-  KeyboardArrowUp as KeyboardArrowUpIcon,
-  Autorenew,
-  DeleteSweep as DeleteSweepIcon
+  KeyboardArrowUp as KeyboardArrowUpIcon
 } from '@mui/icons-material'
 import * as XLSX from 'xlsx'
 
-function AdminPage() {
-  const navigate = useNavigate();
-  const { currentUser, loading } = useFirebase(); // Get currentUser and loading state from context
+const Alert = React.forwardRef(function Alert(props, ref) {
+  return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />
+})
 
-  useEffect(() => {
-    if (!loading) { // Only run check if not loading
-      if (!currentUser) {
-        // Not logged in, or currentUser is null after loading
-        console.log('AdminPage: Not logged in, redirecting.');
-        navigate('/'); // Redirect if not logged in
-      } else if (currentUser.role !== 'admin') {
-        console.log('Current user is not admin, redirecting. Role:', currentUser?.role, 'Email:', currentUser?.email); // Debugging line
-        navigate('/'); // Redirect non-admin users
-      }
-      // If currentUser exists and role is 'admin', do nothing (allow access)
-    }
-  }, [currentUser, loading, navigate]);
+export default function AdminPage() {
+  const navigate = useNavigate()
+  const { currentUser, loading } = useFirebase()
 
-  if (loading) {
-    return <Typography>Loading admin data...</Typography>; // Or a spinner component
-  }
+  const {
+    subscribeToEssences,
+    addEssence,
+    updateEssence,
+    deleteEssence,
+    deleteManyEssences,
+    subscribeToDemands
+  } = useFirebase()
 
-  // If not loading and not admin (and useEffect hasn't redirected yet, though it should have),
-  // you could add an additional check here, but useEffect should handle it.
-  // However, to prevent rendering the page content briefly for non-admins before redirect:
-  if (!currentUser || currentUser.role !== 'admin') {
-    // This check is a safeguard. The useEffect should ideally handle the redirect before this point.
-    // It prevents rendering the admin content if the redirect hasn't happened yet.
-    return null; // Or a message, or rely on useEffect to redirect
-  }
-
-  // currentUser is already destructured above
-  const { subscribeToEssences, addEssence, updateEssence, deleteEssence, deleteManyEssences, subscribeToDemands } = useFirebase();
   const [essences, setEssences] = useState([])
-  const [demandsByEssence, setDemandsByEssence] = useState({}) // State to hold demands grouped by essenceId
-  const [selectedEssences, setSelectedEssences] = useState([]) // SeÃ§ili esanslarÄ± tutacak state
-  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState(false) // Toplu silme onay dialogu
-
-  useEffect(() => {
-    const unsubscribe = subscribeToEssences((updatedEssences) => {
-      setEssences(updatedEssences)
-    })
-    return () => unsubscribe()
-  }, [subscribeToEssences])
-
-  // Subscribe to Demands and group them by essenceId
-  useEffect(() => {
-    const unsubscribeDemands = subscribeToDemands((allDemands) => {
-      const groupedDemands = allDemands.reduce((acc, demand) => {
-        const { essenceId } = demand;
-        if (!acc[essenceId]) {
-          acc[essenceId] = [];
-        }
-        // Add necessary demand details
-        acc[essenceId].push({
-          id: demand.id,
-          userName: demand.userName || 'Bilinmeyen KullanÄ±cÄ±', // Add fallback
-          amount: demand.amount,
-          date: demand.createdAt?.toDate ? demand.createdAt.toDate() : new Date() // Handle potential non-timestamp data
-        });
-        // Sort demands by date descending within each group
-        acc[essenceId].sort((a, b) => b.date - a.date);
-        return acc;
-      }, {});
-      console.log('Grouped Demands:', groupedDemands); // Debugging line
-      setDemandsByEssence(groupedDemands);
-    });
-
-    return () => unsubscribeDemands();
-  }, [subscribeToDemands]);
-
+  const [demandsByEssence, setDemandsByEssence] = useState({})
+  const [selectedEssences, setSelectedEssences] = useState([])
+  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
   const [openRows, setOpenRows] = useState({})
   const [openDialog, setOpenDialog] = useState(false)
   const [openSnackbar, setOpenSnackbar] = useState(false)
@@ -124,7 +72,44 @@ function AdminPage() {
     category: ''
   })
 
+  useEffect(() => {
+    if (!loading) {
+      if (!currentUser) {
+        navigate('/')
+      } else if (currentUser.role !== 'admin') {
+        navigate('/')
+      }
+    }
+  }, [currentUser, loading, navigate])
 
+  useEffect(() => {
+    const unsubscribe = subscribeToEssences((updatedEssences) => {
+      setEssences(updatedEssences)
+    })
+    return () => unsubscribe()
+  }, [subscribeToEssences])
+
+  useEffect(() => {
+    const unsubscribeDemands = subscribeToDemands((allDemands) => {
+      const groupedDemands = allDemands.reduce((acc, demand) => {
+        const { essenceId } = demand
+        if (!acc[essenceId]) {
+          acc[essenceId] = []
+        }
+        acc[essenceId].push({
+          id: demand.id,
+          userName: demand.userName || 'Bilinmeyen Kullanıcı',
+          amount: demand.amount,
+          date: demand.createdAt?.toDate ? demand.createdAt.toDate() : new Date()
+        })
+        acc[essenceId].sort((a, b) => b.date - a.date)
+        return acc
+      }, {})
+      setDemandsByEssence(groupedDemands)
+    })
+
+    return () => unsubscribeDemands()
+  }, [subscribeToDemands])
 
   const handleOpenDialog = (essence = null) => {
     if (essence) {
@@ -159,13 +144,14 @@ function AdminPage() {
       code: '',
       targetAmount: 250,
       stockAmount: 0,
-      price: 0
+      price: 0,
+      category: ''
     })
   }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value
     }))
@@ -173,17 +159,18 @@ function AdminPage() {
 
   const handleSubmit = async () => {
     if (!formData.code || !/^[A-Za-z0-9]+$/.test(formData.code)) {
-      setSnackbarMessage('LÃ¼tfen geÃ§erli bir kod giriniz (sadece harf ve rakam iÃ§erebilir)')
+      setSnackbarMessage('Lütfen geçerli bir kod giriniz (sadece harf ve rakam içerebilir)')
       setOpenSnackbar(true)
       return
     }
 
-    const codeExists = essences.some(essence => 
-      essence.code === formData.code && (!editingEssence || essence.id !== editingEssence.id)
+    const codeExists = essences.some(
+      (essence) =>
+        essence.code === formData.code && (!editingEssence || essence.id !== editingEssence.id)
     )
 
     if (codeExists) {
-      setSnackbarMessage('Bu kod zaten kullanÄ±lmakta')
+      setSnackbarMessage('Bu kod zaten kullanılmakta')
       setOpenSnackbar(true)
       return
     }
@@ -191,19 +178,19 @@ function AdminPage() {
     try {
       if (editingEssence) {
         await updateEssence(editingEssence.id, formData)
-        setSnackbarMessage('Esans baÅŸarÄ±yla gÃ¼ncellendi')
+        setSnackbarMessage('Esans başarıyla güncellendi')
       } else {
         await addEssence({
           ...formData,
           totalDemand: 0,
           demands: []
         })
-        setSnackbarMessage('Yeni esans baÅŸarÄ±yla eklendi')
+        setSnackbarMessage('Yeni esans başarıyla eklendi')
       }
       setOpenSnackbar(true)
       handleCloseDialog()
     } catch (error) {
-      setSnackbarMessage('Ä°ÅŸlem sÄ±rasÄ±nda bir hata oluÅŸtu')
+      setSnackbarMessage('İşlem sırasında bir hata oluştu')
       setOpenSnackbar(true)
     }
   }
@@ -211,450 +198,386 @@ function AdminPage() {
   const handleDelete = async (id) => {
     try {
       await deleteEssence(id)
-      setSnackbarMessage('Esans baÅŸarÄ±yla silindi')
+      setSnackbarMessage('Esans başarıyla silindi')
       setOpenSnackbar(true)
     } catch (error) {
-      setSnackbarMessage('Esans silinirken bir hata oluÅŸtu')
+      setSnackbarMessage('Esans silinirken bir hata oluştu')
       setOpenSnackbar(true)
     }
   }
-  
-  // Toplu seÃ§me iÅŸlemleri iÃ§in fonksiyonlar
+
   const handleSelectAll = (event) => {
     if (event.target.checked) {
-      // TÃ¼m esanslarÄ± seÃ§
-      const allEssenceIds = essences.map(essence => essence.id);
-      setSelectedEssences(allEssenceIds);
+      const allEssenceIds = essences.map((essence) => essence.id)
+      setSelectedEssences(allEssenceIds)
     } else {
-      // TÃ¼m seÃ§imleri kaldÄ±r
-      setSelectedEssences([]);
+      setSelectedEssences([])
     }
-  };
-  
+  }
+
   const handleSelectEssence = (event, essenceId) => {
     if (event.target.checked) {
-      // EsansÄ± seÃ§ilenlere ekle
-      setSelectedEssences(prev => [...prev, essenceId]);
+      setSelectedEssences((prev) => [...prev, essenceId])
     } else {
-      // EsansÄ± seÃ§ililerden Ã§Ä±kar
-      setSelectedEssences(prev => prev.filter(id => id !== essenceId));
+      setSelectedEssences((prev) => prev.filter((id) => id !== essenceId))
     }
-  };
-  
+  }
+
   const handleBulkDelete = async () => {
-    if (selectedEssences.length === 0) return;
-    
+    if (selectedEssences.length === 0) return
+
     try {
-      // Toplu silme iÅŸlemini gerÃ§ekleÅŸtir
-      const results = await deleteManyEssences(selectedEssences);
-      
-      // BaÅŸarÄ±lÄ± ve baÅŸarÄ±sÄ±z iÅŸlemleri say
-      const successful = results.filter(result => result.success).length;
-      const failed = results.filter(result => !result.success).length;
-      
-      // KullanÄ±cÄ±ya bilgi ver
-      let message = '';
+      const results = await deleteManyEssences(selectedEssences)
+      const successful = results.filter((result) => result.success).length
+      const failed = results.filter((result) => !result.success).length
+
+      let message = ''
       if (successful > 0 && failed === 0) {
-        message = `${successful} esans baÅŸarÄ±yla silindi.`;
+        message = `${successful} esans başarıyla silindi.`
       } else if (successful > 0 && failed > 0) {
-        message = `${successful} esans silindi, ${failed} esans silinemedi.`;
+        message = `${successful} esans silindi, ${failed} esans silinemedi.`
       } else {
-        message = 'Esanslar silinemedi.';
+        message = 'Esanslar silinemedi.'
       }
-      
-      setSnackbarMessage(message);
-      setOpenSnackbar(true);
-      setSelectedEssences([]); // SeÃ§imleri sÄ±fÄ±rla
-      setConfirmDeleteDialog(false); // Onay dialogunu kapat
+
+      setSnackbarMessage(message)
+      setOpenSnackbar(true)
+      setSelectedEssences([])
+      setConfirmDeleteDialog(false)
     } catch (error) {
-      setSnackbarMessage('Toplu silme iÅŸlemi sÄ±rasÄ±nda bir hata oluÅŸtu');
-      setOpenSnackbar(true);
-      setConfirmDeleteDialog(false);
+      setSnackbarMessage('Toplu silme işlemi sırasında bir hata oluştu')
+      setOpenSnackbar(true)
+      setConfirmDeleteDialog(false)
     }
-  };
-  
+  }
+
   const openConfirmDeleteDialog = () => {
     if (selectedEssences.length === 0) {
-      setSnackbarMessage('LÃ¼tfen silinecek esanslarÄ± seÃ§in');
-      setOpenSnackbar(true);
-      return;
+      setSnackbarMessage('Lütfen silinecek esansları seçin')
+      setOpenSnackbar(true)
+      return
     }
-    setConfirmDeleteDialog(true);
-  };
+    setConfirmDeleteDialog(true)
+  }
 
   const downloadTemplate = () => {
     const template = [
-      ['Esans AdÄ±', 'Esans Kodu', 'Kategori', 'Stok MiktarÄ± (gr)', 'Toplam Talep (gr)', 'Fiyat (TL/gr)'],
-      ['Ã–rnek Esans 1', 'ES001', 'Kategori 1', 0, 0, 0],
-      ['Ã–rnek Esans 2', 'ES002', 'Kategori 2', 0, 0, 0]
+      ['Esans Adı', 'Esans Kodu', 'Kategori', 'Stok Miktarı (gr)', 'Toplam Talep (gr)', 'Fiyat (TL/gr)'],
+      ['Örnek Esans 1', 'ES001', 'Kategori 1', 0, 0, 0],
+      ['Örnek Esans 2', 'ES002', 'Kategori 2', 0, 0, 0]
     ]
-    
+
     const ws = XLSX.utils.aoa_to_sheet(template)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Esans Åablonu')
+    XLSX.utils.book_append_sheet(wb, ws, 'Esans Şablonu')
     XLSX.writeFile(wb, 'esans_sablonu.xlsx')
   }
 
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0]
-    const reader = new FileReader()
-
-    reader.onload = async (e) => {
-      const data = new Uint8Array(e.target.result)
-      const workbook = XLSX.read(data, { type: 'array' })
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-
-      // Ä°lk satÄ±rÄ± (baÅŸlÄ±klarÄ±) atla ve verileri iÅŸle
-      const newEssences = jsonData.slice(1).map((row, index) => ({
-        id: essences.length + index + 1,
-        name: row[0],
-        code: row[1] || `ES${(essences.length + index + 1).toString().padStart(3, '0')}`,
-        category: row[2] || '',
-        stockAmount: row[3] || 0,
-        totalDemand: row[4] || 0,
-        price: row[5] || 0,
-        demands: []
-      }))
-
-      // Save each new essence to Firestore
-      try {
-        for (const essence of newEssences) {
-          // Ensure essential fields are present, provide defaults if necessary
-          const essenceToAdd = {
-            name: essence.name || 'Ä°simsiz Esans',
-            code: essence.code || `ES${Date.now()}${Math.floor(Math.random() * 100)}`, // Generate a unique code if missing
-            category: essence.category || '',
-            stockAmount: Number(essence.stockAmount) || 0,
-            totalDemand: Number(essence.totalDemand) || 0,
-            price: Number(essence.price) || 0,
-            targetAmount: 250, // Default target amount
-            demands: [] // Initialize demands array
-          };
-          // Validate code uniqueness before adding
-          const codeExists = essences.some(existingEssence => existingEssence.code === essenceToAdd.code);
-          if (codeExists) {
-            console.warn(`Skipping essence with duplicate code: ${essenceToAdd.code}`);
-            continue; // Skip this essence if code already exists
-          }
-          await addEssence(essenceToAdd);
-        }
-        setSnackbarMessage(`${newEssences.length} esans baÅŸarÄ±yla iÃ§e aktarÄ±ldÄ± ve kaydedildi`);
-        setOpenSnackbar(true);
-      } catch (error) {
-        console.error("Error importing essences:", error);
-        setSnackbarMessage('Esanslar iÃ§e aktarÄ±lÄ±rken bir hata oluÅŸtu.');
-        setOpenSnackbar(true);
-      }
-    }
-
-    reader.readAsArrayBuffer(file);
-  }
-
-  const toggleRow = (id) => {
-    setOpenRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }))
-  }
+  const filteredEssences = essences.filter((essence) => {
+    const lowerSearch = searchTerm.toLowerCase()
+    return (
+      essence.name.toLowerCase().includes(lowerSearch) ||
+      essence.code.toLowerCase().includes(lowerSearch) ||
+      (essence.category && essence.category.toLowerCase().includes(lowerSearch))
+    )
+  })
 
   return (
-    <Box sx={{ width: '100%', height: '100%', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: '1px solid rgba(224, 224, 224, 1)' }}>
-        <Typography variant="h4" component="h1">
-          Esans YÃ¶netimi
-        </Typography>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Typography variant="h4" gutterBottom>
+        Esans Yönetimi
+      </Typography>
+
+      {/* Arama Çubuğu */}
+      <TextField
+        label="Esans Ara"
+        variant="outlined"
+        fullWidth
+        margin="normal"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
+
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+        >
+          Yeni Esans Ekle
+        </Button>
+
         <Box>
           <Button
             variant="outlined"
-            startIcon={<DownloadIcon />}
-            onClick={downloadTemplate}
+            color="secondary"
+            startIcon={<DeleteIcon />}
+            onClick={openConfirmDeleteDialog}
+            disabled={selectedEssences.length === 0}
             sx={{ mr: 2 }}
           >
-            Åablon Ä°ndir
+            Seçilenleri Sil
           </Button>
+
           <Button
             variant="outlined"
-            component="label"
-            sx={{ mr: 2 }}
+            color="info"
+            startIcon={<DownloadIcon />}
+            onClick={downloadTemplate}
           >
-            Excel YÃ¼kle
-            <input
-              type="file"
-              hidden
-              accept=".xlsx, .xls"
-              onChange={handleFileUpload}
-            />
-          </Button>
-          {selectedEssences.length > 0 && (
-            <Tooltip title="SeÃ§ili esanslarÄ± sil">
-              <Button
-                variant="outlined"
-                color="error"
-                startIcon={<DeleteSweepIcon />}
-                onClick={openConfirmDeleteDialog}
-                sx={{ mr: 2 }}
-              >
-                SeÃ§ilenleri Sil ({selectedEssences.length})
-              </Button>
-            </Tooltip>
-          )}
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Yeni Esans Ekle
+            Şablon İndir
           </Button>
         </Box>
       </Box>
 
-
-
-      <Box sx={{ mt: 4, pt: 4 }}>
-
-        <TableContainer component={props => <Paper {...props} elevation={0} />} sx={{ backgroundColor: '#fff', marginTop: 0, marginBottom: 0 }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell padding="checkbox">
-                  <Checkbox
-                    indeterminate={selectedEssences.length > 0 && selectedEssences.length < essences.length}
-                    checked={essences.length > 0 && selectedEssences.length === essences.length}
-                    onChange={handleSelectAll}
-                  />
-                </TableCell>
-                <TableCell padding="none" width="48px" />
-                <TableCell>Esans AdÄ±</TableCell>
-                <TableCell>Esans Kodu</TableCell>
-                <TableCell>Kategori</TableCell>
-                <TableCell align="right">Stok MiktarÄ± (gr)</TableCell>
-                <TableCell align="right">Toplam Talep (gr)</TableCell>
-                <TableCell align="right">Fiyat (TL/gr)</TableCell>
-                <TableCell align="right">Durum</TableCell>
-                <TableCell align="right">Ä°ÅŸlemler</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {essences.map((essence) => {
-                const isConfirmedPurchase = essence.totalDemand >= 250
-                
-                return (
-                  <React.Fragment key={essence.id}>
-                    <TableRow>
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedEssences.includes(essence.id)}
-                          onChange={(event) => handleSelectEssence(event, essence.id)}
-                        />
-                      </TableCell>
-                      <TableCell padding="none">
-                        <IconButton
-                          size="small"
-                          onClick={() => toggleRow(essence.id)}
-                        >
-                          {openRows[essence.id] ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-                        </IconButton>
-                      </TableCell>
-                      <TableCell>{essence.name}</TableCell>
-                      <TableCell>{essence.code}</TableCell>
-                      <TableCell>{essence.category || '-'}</TableCell>
-                      <TableCell align="right">{essence.stockAmount}</TableCell>
-                      <TableCell align="right">{essence.totalDemand}</TableCell>
-                      <TableCell align="right">{essence.price}</TableCell>
-                      <TableCell align="right">
-                        {isConfirmedPurchase ? (
-                          <Chip
-                            icon={<CheckCircleIcon />}
-                            label="Kesin AlÄ±m"
-                            color="warning"
-                            variant="outlined"
-                            sx={{
-                              '& .MuiChip-icon': {
-                                color: 'inherit'
-                              }
-                            }}
-                          />
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  checked={
+                    selectedEssences.length > 0 &&
+                    selectedEssences.length === essences.length
+                  }
+                  indeterminate={
+                    selectedEssences.length > 0 &&
+                    selectedEssences.length < essences.length
+                  }
+                  onChange={handleSelectAll}
+                  inputProps={{ 'aria-label': 'select all essences' }}
+                />
+              </TableCell>
+              <TableCell />
+              <TableCell>Esans Kodu</TableCell>
+              <TableCell>Esans Adı</TableCell>
+              <TableCell>Kategori</TableCell>
+              <TableCell>Hedef Miktar (gr)</TableCell>
+              <TableCell>Stok Miktarı (gr)</TableCell>
+              <TableCell>Fiyat (TL/gr)</TableCell>
+              <TableCell>İşlemler</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredEssences.map((essence) => {
+              const demands = demandsByEssence[essence.id] || []
+              const totalDemandAmount = demands.reduce(
+                (sum, d) => sum + (Number(d.amount) || 0),
+                0
+              )
+              const isOpen = openRows[essence.id] || false
+              return (
+                <React.Fragment key={essence.id}>
+                  <TableRow hover>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedEssences.includes(essence.id)}
+                        onChange={(e) => handleSelectEssence(e, essence.id)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() =>
+                          setOpenRows((prev) => ({
+                            ...prev,
+                            [essence.id]: !isOpen
+                          }))
+                        }
+                      >
+                        {isOpen ? (
+                          <KeyboardArrowUpIcon />
                         ) : (
-                          <Chip
-                            icon={<Autorenew />}
-                            label="Talep ToplanÄ±yor"
-                            color="primary"
-                            variant="outlined"
-                            sx={{
-                              '& .MuiChip-icon': {
-                                color: 'inherit'
-                              }
-                            }}
-                          />
+                          <KeyboardArrowDownIcon />
                         )}
-                      </TableCell>
-                      <TableCell align="right">
+                      </IconButton>
+                    </TableCell>
+                    <TableCell>{essence.code}</TableCell>
+                    <TableCell>{essence.name}</TableCell>
+                    <TableCell>{essence.category}</TableCell>
+                    <TableCell>{essence.targetAmount}</TableCell>
+                    <TableCell>{essence.stockAmount}</TableCell>
+                    <TableCell>{essence.price}</TableCell>
+                    <TableCell>
+                      <Tooltip title="Düzenle">
                         <IconButton
-                          size="small"
+                          color="primary"
                           onClick={() => handleOpenDialog(essence)}
-                          sx={{ mr: 1 }}
                         >
                           <EditIcon />
                         </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Sil">
                         <IconButton
-                          size="small"
+                          color="error"
                           onClick={() => handleDelete(essence.id)}
                         >
                           <DeleteIcon />
                         </IconButton>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
-                        <Collapse in={openRows[essence.id]} timeout="auto" unmountOnExit>
-                          <Box sx={{ margin: 1 }}>
-                            <Typography variant="h6" gutterBottom component="div">
-                              Talep GeÃ§miÅŸi
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell
+                      style={{ paddingBottom: 0, paddingTop: 0 }}
+                      colSpan={9}
+                    >
+                      <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                        <Box margin={2}>
+                          <Typography variant="subtitle1" gutterBottom>
+                            Talepler
+                          </Typography>
+                          {demands.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary">
+                              Bu esans için henüz talep yok.
                             </Typography>
-                            <Table size="small" sx={{ backgroundColor: '#fff' }}>
+                          ) : (
+                            <Table size="small" aria-label="demands">
                               <TableHead>
                                 <TableRow>
-                                  <TableCell>Ad Soyad</TableCell>
-                                  <TableCell>Telefon</TableCell>
-                                  <TableCell align="right">Talep MiktarÄ± (gr)</TableCell>
-                                  <TableCell align="right">Birim Fiyat (TL/gr)</TableCell>
-                                  {/* Toplam Tutar kolonu kaldÄ±rÄ±ldÄ± */}
-                                  <TableCell align="right">Tarih</TableCell>
+                                  <TableCell>Kullanıcı</TableCell>
+                                  <TableCell>Miktar (gr)</TableCell>
+                                  <TableCell>Tarih</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
-                                {/* Display demands from demandsByEssence state */}
-                                {(demandsByEssence[essence.id] || []).map((demand) => {
-                                  console.log(`Demands for essence ${essence.id}:`, demandsByEssence[essence.id]); // Debugging line
-                                  // Removed localStorage lookup for userDetails
-                                  return (
-                                    <TableRow key={demand.id}>
-                                      <TableCell component="th" scope="row">
-                                        {demand.userName} 
-                                      </TableCell>
-                                      <TableCell>
-                                        {/* Phone number removed as it relied on potentially unreliable localStorage lookup */}
-                                        -
-                                      </TableCell>
-                                      <TableCell align="right">{demand.amount}</TableCell>
-                                      <TableCell align="right">{essence.price}</TableCell>
-                                      {/* Toplam Tutar hÃ¼cresi kaldÄ±rÄ±ldÄ± */}
-                                      <TableCell align="right">
-                                        {/* Ensure demand.date is a valid Date object */}
-                                        {demand.date instanceof Date ? demand.date.toLocaleDateString('tr-TR') : 'GeÃ§ersiz Tarih'}
-                                      </TableCell>
-                                    </TableRow>
-                                  )
-                                })}
+                                {demands.map((demand) => (
+                                  <TableRow key={demand.id}>
+                                    <TableCell>{demand.userName}</TableCell>
+                                    <TableCell>{demand.amount}</TableCell>
+                                    <TableCell>
+                                      {demand.date.toLocaleDateString()}{' '}
+                                      {demand.date.toLocaleTimeString()}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                                <TableRow>
+                                  <TableCell>
+                                    <b>Toplam Talep</b>
+                                  </TableCell>
+                                  <TableCell>
+                                    <b>{totalDemandAmount}</b>
+                                  </TableCell>
+                                  <TableCell />
+                                </TableRow>
                               </TableBody>
                             </Table>
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  </React.Fragment>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Box>
+                          )}
+                        </Box>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </React.Fragment>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-      <Dialog open={openDialog} onClose={handleCloseDialog}>
-        <DialogTitle>
-          {editingEssence ? 'Esans DÃ¼zenle' : 'Yeni Esans Ekle'}
-        </DialogTitle>
+      {/* Esans Ekle/Düzenle Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingEssence ? 'Esans Düzenle' : 'Yeni Esans Ekle'}</DialogTitle>
         <DialogContent>
           <TextField
             margin="dense"
+            label="Esans Adı"
             name="name"
-            label="Esans AdÄ±"
-            type="text"
             fullWidth
+            variant="outlined"
             value={formData.name}
             onChange={handleInputChange}
           />
           <TextField
             margin="dense"
-            name="code"
             label="Esans Kodu"
-            type="text"
+            name="code"
             fullWidth
+            variant="outlined"
             value={formData.code}
             onChange={handleInputChange}
-            helperText="Sadece harf ve rakam iÃ§erebilir"
+            helperText="Sadece harf ve rakam kullanılabilir"
           />
           <TextField
             margin="dense"
-            name="stockAmount"
-            label="Stok MiktarÄ± (gr)"
-            type="number"
-            fullWidth
-            value={formData.stockAmount}
-            onChange={handleInputChange}
-          />
-          <TextField
-            margin="dense"
-            name="price"
-            label="Fiyat (TL/gr)"
-            type="number"
-            fullWidth
-            value={formData.price}
-            onChange={handleInputChange}
-          />
-          <TextField
-            margin="dense"
-            name="category"
             label="Kategori"
-            type="text"
+            name="category"
             fullWidth
+            variant="outlined"
             value={formData.category}
             onChange={handleInputChange}
           />
+          <TextField
+            margin="dense"
+            label="Hedef Miktar (gr)"
+            name="targetAmount"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={formData.targetAmount}
+            onChange={handleInputChange}
+            inputProps={{ min: 0 }}
+          />
+          <TextField
+            margin="dense"
+            label="Stok Miktarı (gr)"
+            name="stockAmount"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={formData.stockAmount}
+            onChange={handleInputChange}
+            inputProps={{ min: 0 }}
+          />
+          <TextField
+            margin="dense"
+            label="Fiyat (TL/gr)"
+            name="price"
+            type="number"
+            fullWidth
+            variant="outlined"
+            value={formData.price}
+            onChange={handleInputChange}
+            inputProps={{ min: 0, step: 0.01 }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Ä°ptal</Button>
-          <Button onClick={handleSubmit} variant="contained">
-            {editingEssence ? 'GÃ¼ncelle' : 'Ekle'}
+          <Button onClick={handleCloseDialog}>İptal</Button>
+          <Button variant="contained" onClick={handleSubmit}>
+            {editingEssence ? 'Güncelle' : 'Ekle'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={openSnackbar}
-        autoHideDuration={3000}
-        onClose={() => setOpenSnackbar(false)}
-      >
-        <MuiAlert
-          elevation={6}
-          variant="filled"
-          severity="success"
-          onClose={() => setOpenSnackbar(false)}>
-          {snackbarMessage}
-        </MuiAlert>
-      </Snackbar>
-      
-      {/* Toplu silme onay dialogu */}
+      {/* Onay Diyaloğu */}
       <Dialog
         open={confirmDeleteDialog}
         onClose={() => setConfirmDeleteDialog(false)}
       >
-        <DialogTitle>Toplu Silme OnayÄ±</DialogTitle>
-        <DialogContent>
-          <Typography>
-            SeÃ§ili {selectedEssences.length} esansÄ± ve bunlara ait tÃ¼m talepleri silmek istediÄŸinizden emin misiniz? Bu iÅŸlem geri alÄ±namaz.
-          </Typography>
-        </DialogContent>
+        <DialogTitle>Seçilen esansları silmek istediğinize emin misiniz?</DialogTitle>
         <DialogActions>
-          <Button onClick={() => setConfirmDeleteDialog(false)}>VazgeÃ§</Button>
-          <Button onClick={handleBulkDelete} color="error" variant="contained">
+          <Button onClick={() => setConfirmDeleteDialog(false)}>İptal</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={handleBulkDelete}
+          >
             Sil
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={openSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setOpenSnackbar(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setOpenSnackbar(false)} severity="info" sx={{ width: '100%' }}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
+    </Container>
   )
 }
-
-export default AdminPage;
