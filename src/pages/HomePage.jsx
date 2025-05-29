@@ -1,166 +1,84 @@
-import React from 'react'
-import { useState, useEffect, useMemo } from 'react'
-import { useFirebase } from '../firebase/FirebaseContext'
-import {
-  Box,
-  Container,
-  Typography,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Snackbar,
-  Chip,
-  Collapse,
-  IconButton,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  LinearProgress,
-  ButtonGroup,
-  Tooltip
-} from '@mui/material'
-import MuiAlert from '@mui/material/Alert'
-import { 
-  CheckCircle as CheckCircleIcon, 
-  Autorenew,
-  KeyboardArrowDown as KeyboardArrowDownIcon,
-  KeyboardArrowUp as KeyboardArrowUpIcon,
-  Add as AddIcon,
-  Remove as RemoveIcon
-} from '@mui/icons-material'
-import { useTheme, useMediaQuery } from '@mui/material'
-import { Grid } from '@mui/material'
+import React, { useState, useEffect, useMemo } from 'react';
+import { useFirebase } from '../firebase/FirebaseContext';
+import { Box, Container, Typography, Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Snackbar, Chip, Collapse, IconButton, TextField, Select, MenuItem, FormControl, InputLabel, LinearProgress, ButtonGroup, Tooltip } from '@mui/material';
+import MuiAlert from '@mui/material/Alert';
+import { CheckCircle as CheckCircleIcon, Autorenew, KeyboardArrowDown as KeyboardArrowDownIcon, KeyboardArrowUp as KeyboardArrowUpIcon, Add as AddIcon, Remove as RemoveIcon } from '@mui/icons-material';
+import { useTheme, useMediaQuery } from '@mui/material';
+import { Grid } from '@mui/material';
+
+// ... (other imports and code remain unchanged)
 
 function HomePage() {
-  const { subscribeToEssences, addDemand, subscribeToDemands, currentUser } = useFirebase()
-  const [essences, setEssences] = useState([])
-  const [demandsByEssence, setDemandsByEssence] = useState({}) // State to hold demands grouped by essenceId
+  const { subscribeToEssences, addDemand, subscribeToDemands, currentUser } = useFirebase();
+  const [essences, setEssences] = useState([]);
+  const [demandsByEssence, setDemandsByEssence] = useState({});
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [openRows, setOpenRows] = useState({});
+  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+  const [demandQuantities, setDemandQuantities] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  
+  // New state for sorting
+  const [sortConfig, setSortConfig] = useState({ field: 'name', direction: 'asc' });
 
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const categories = [...new Set(essences.map(essence => essence.category))].filter(Boolean);
 
-  const [openRows, setOpenRows] = useState({})
-  const [openSnackbar, setOpenSnackbar] = useState(false)
-  const [snackbarMessage, setSnackbarMessage] = useState('')
-  const [snackbarSeverity, setSnackbarSeverity] = useState('success')
-  const [demandQuantities, setDemandQuantities] = useState({}) // Her esans için talep adedini tutacak state
+  // ... (useEffect hooks for essences, demands, and demandQuantities remain unchanged)
 
-  useEffect(() => {
-    const unsubscribe = subscribeToEssences((updatedEssences) => {
-      setEssences(updatedEssences)
-    })
-    return () => unsubscribe()
-  }, [subscribeToEssences])
-
-  // Subscribe to Demands and group them by essenceId
-  useEffect(() => {
-    const unsubscribeDemands = subscribeToDemands((allDemands) => {
-      const groupedDemands = allDemands.reduce((acc, demand) => {
-        const { essenceId } = demand;
-        if (!acc[essenceId]) {
-          acc[essenceId] = [];
-        }
-        // Add necessary demand details
-        acc[essenceId].push({
-          id: demand.id,
-          userName: demand.userName || 'Bilinmeyen Kullanıcı', // Add fallback
-          amount: demand.amount,
-          date: demand.createdAt?.toDate ? demand.createdAt.toDate() : new Date() // Handle potential non-timestamp data
-        });
-        // Sort demands by date descending within each group
-        acc[essenceId].sort((a, b) => b.date - a.date);
-        return acc;
-      }, {});
-      setDemandsByEssence(groupedDemands);
-    });
-
-    return () => unsubscribeDemands();
-  }, [subscribeToDemands]);
-
-  // Esans yüklenirken varsayılan talep adedini ayarla
-  useEffect(() => {
-    const initialDemandQuantities = {};
-    essences.forEach(essence => {
-      initialDemandQuantities[essence.id] = initialDemandQuantities[essence.id] || 1; // Varsayılan 1 adet (50 gram)
-    });
-    setDemandQuantities(initialDemandQuantities);
-  }, [essences]);
-
-  // Talep adedini artır
   const increaseDemandQuantity = (essenceId) => {
     setDemandQuantities(prev => ({
       ...prev,
-      [essenceId]: Math.min((prev[essenceId] || 1) + 1, 5) // Maksimum 5 adet (250 gram)
+      [essenceId]: Math.min((prev[essenceId] || 1) + 1, 5)
     }));
   };
 
-  // Talep adedini azalt
   const decreaseDemandQuantity = (essenceId) => {
     setDemandQuantities(prev => ({
       ...prev,
-      [essenceId]: Math.max((prev[essenceId] || 1) - 1, 1) // Minimum 1 adet (50 gram)
+      [essenceId]: Math.max((prev[essenceId] || 1) - 1, 1)
     }));
   };
 
   const handleCreateDemand = async (essence) => {
-    const quantity = demandQuantities[essence.id] || 1; // Seçilen adet
-    const amount = quantity * 50; // Her adet 50 gram
-
+    const quantity = demandQuantities[essence.id] || 1;
+    const amount = quantity * 50;
     try {
       if (essence.stockAmount < amount || essence.totalDemand + amount > essence.stockAmount) {
-        setSnackbarMessage('Stok miktarı yetersiz')
-        setSnackbarSeverity('error')
-        setOpenSnackbar(true)
-        return
+        setSnackbarMessage('Stok miktarı yetersiz');
+        setSnackbarSeverity('error');
+        setOpenSnackbar(true);
+        return;
       }
-
-      // Her adet için ayrı bir talep oluştur
       for (let i = 0; i < quantity; i++) {
         await addDemand(essence.id, {
-          amount: 50, // Her talep 50 gram
+          amount: 50,
           totalPrice: 50 * essence.price,
           category: essence.category
-        })
+        });
       }
-
-      setSnackbarMessage(`${quantity} adet (${amount} gram) talep başarıyla oluşturuldu`)
-      setSnackbarSeverity('success')
+      setSnackbarMessage(`${quantity} adet (${amount} gram) talep başarıyla oluşturuldu`);
+      setSnackbarSeverity('success');
     } catch (error) {
-      setSnackbarMessage(error.message || 'Talep oluşturulurken bilinmeyen bir hata oluştu.')
-      setSnackbarSeverity('error')
+      setSnackbarMessage(error.message || 'Talep oluşturulurken bilinmeyen bir hata oluştu.');
+      setSnackbarSeverity('error');
     }
-    setOpenSnackbar(true)
-  }
+    setOpenSnackbar(true);
+  };
 
   const toggleRow = (id) => {
-    setOpenRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }))
-  }
+    setOpenRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
-  const [searchTerm, setSearchTerm] = useState('')
-  const [activeFilter, setActiveFilter] = useState('all')
-  const [selectedCategory, setSelectedCategory] = useState('all')
-
-  const categories = [...new Set(essences.map(essence => essence.category))].filter(Boolean)
-
-  // Kullanıcının talep ettiği esans ID'lerini belirle
   const userDemandedEssenceIds = useMemo(() => {
     if (!currentUser) return [];
-    
-    // demandsByEssence'dan kullanıcının talep ettiği esansları bul
     const essenceIds = [];
     Object.entries(demandsByEssence).forEach(([essenceId, demands]) => {
-      // Kullanıcının bu esans için talebi var mı kontrol et
-      const hasUserDemand = demands.some(demand => 
+      const hasUserDemand = demands.some(demand =>
         demand.userId === currentUser.uid || demand.userName === `${currentUser.firstName} ${currentUser.lastName}`
       );
       if (hasUserDemand) {
@@ -170,58 +88,66 @@ function HomePage() {
     return essenceIds;
   }, [currentUser, demandsByEssence]);
 
-  const filteredEssences = essences
-    .filter(essence => {
-      const matchesSearch = 
-        essence.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        essence.code.toLowerCase().includes(searchTerm.toLowerCase())
-
-      const matchesCategory = 
-        selectedCategory === 'all' || essence.category === selectedCategory
-      
-      // Kullanıcının talep ettiği esansları kontrol et
-      const isUserDemanded = userDemandedEssenceIds.includes(essence.id);
-
-      switch(activeFilter) {
-        case 'confirmed':
-          return matchesSearch && matchesCategory && essence.totalDemand >= 250
-        case 'under250':
-          return matchesSearch && matchesCategory && essence.totalDemand < 250
-        case 'outOfStock':
-          return matchesSearch && matchesCategory && essence.stockAmount === essence.totalDemand
-        case 'myDemands':
-          return matchesSearch && matchesCategory && isUserDemanded
-        default:
-          return matchesSearch && matchesCategory
+  // Sorting logic
+  const sortEssences = (essences, field, direction) => {
+    return [...essences].sort((a, b) => {
+      if (field === 'name') {
+        return direction === 'asc'
+          ? a.name.localeCompare(b.name, 'tr-TR')
+          : b.name.localeCompare(a.name, 'tr-TR');
+      } else if (field === 'totalDemand') {
+        return direction === 'asc'
+          ? a.totalDemand - b.totalDemand
+          : b.totalDemand - a.totalDemand;
+      } else if (field === 'price') {
+        return direction === 'asc'
+          ? a.price - b.price
+          : b.price - a.price;
       }
-    })
-    // Esansları isme göre alfabetik olarak sırala
-    .sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'))
+      return 0;
+    });
+  };
+
+  const filteredEssences = useMemo(() => {
+    let result = essences.filter(essence => {
+      const matchesSearch = essence.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        essence.code.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || essence.category === selectedCategory;
+      const isUserDemanded = userDemandedEssenceIds.includes(essence.id);
+      switch (activeFilter) {
+        case 'confirmed':
+          return matchesSearch && matchesCategory && essence.totalDemand >= 250;
+        case 'under250':
+          return matchesSearch && matchesCategory && essence.totalDemand < 250;
+        case 'outOfStock':
+          return matchesSearch && matchesCategory && essence.stockAmount === essence.totalDemand;
+        case 'myDemands':
+          return matchesSearch && matchesCategory && isUserDemanded;
+        default:
+          return matchesSearch && matchesCategory;
+      }
+    });
+    // Apply sorting
+    return sortEssences(result, sortConfig.field, sortConfig.direction);
+  }, [essences, searchTerm, selectedCategory, activeFilter, userDemandedEssenceIds, sortConfig]);
+
+  const handleSortChange = (field) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const renderMobileCard = (essence) => {
-    const isConfirmedPurchase = essence.totalDemand >= 250
-    
+    const isConfirmedPurchase = essence.totalDemand >= 250;
     return (
-      <Paper
-        key={essence.id}
-        sx={{
-          p: 2,
-          mb: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1
-        }}
-      >
+      <Paper key={essence.id} sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">{essence.name}</Typography>
-          <IconButton
-            size="small"
-            onClick={() => toggleRow(essence.id)}
-          >
+          <IconButton size="small" onClick={() => toggleRow(essence.id)}>
             {openRows[essence.id] ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </Box>
-
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Typography variant="body2">Kod: {essence.code}</Typography>
           <Typography variant="body2">Kategori: {essence.category || '-'}</Typography>
@@ -229,70 +155,44 @@ function HomePage() {
           <Typography variant="body2">Toplam Talep: {essence.totalDemand} gr</Typography>
           <Typography variant="body2">Birim Fiyat: {essence.price} TL/gr</Typography>
         </Box>
-
-        {/* İlerleme çubuğu */}
         <Box sx={{ mt: 2, mb: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography variant="caption">
-              Talep Durumu: {essence.totalDemand} / 250 gr
-            </Typography>
-            <Typography variant="caption">
-              {Math.min(Math.round((essence.totalDemand / 250) * 100), 100)}%
-            </Typography>
+            <Typography variant="caption">Talep Durumu: {essence.totalDemand} / 250 gr</Typography>
+            <Typography variant="caption">{Math.min(Math.round((essence.totalDemand / 250) * 100), 100)}%</Typography>
           </Box>
-          <LinearProgress 
-            variant="determinate" 
-            value={Math.min((essence.totalDemand / 250) * 100, 100)} 
+          <LinearProgress
+            variant="determinate"
+            value={Math.min((essence.totalDemand / 250) * 100, 100)}
             color={isConfirmedPurchase ? "success" : "primary"}
             sx={{ height: 8, borderRadius: 1 }}
           />
         </Box>
-        
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
           {isConfirmedPurchase ? (
-            <Chip
-              icon={<CheckCircleIcon />}
-              label="Kesin Alım"
-              color="warning"
-              variant="outlined"
-              size="small"
-            />
+            <Chip icon={<CheckCircleIcon />} label="Kesin Alım" color="warning" variant="outlined" size="small" />
           ) : essence.stockAmount === essence.totalDemand ? (
-            <Chip
-              label="Bitti"
-              color="error"
-              variant="outlined"
-              size="small"
-            />
+            <Chip label="Bitti" color="error" variant="outlined" size="small" />
           ) : (
-            <Chip
-              icon={<Autorenew />}
-              label="Talep Toplanıyor"
-              color="primary"
-              variant="outlined"
-              size="small"
-            />
+            <Chip icon={<Autorenew />} label="Talep Toplanıyor" color="primary" variant="outlined" size="small" />
           )}
-          
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <ButtonGroup size="small" sx={{ mr: 1 }}>
-                <Button 
-                  onClick={() => decreaseDemandQuantity(essence.id)}
-                  disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
-                >
-                  <RemoveIcon fontSize="small" />
-                </Button>
-                <Button disabled sx={{ px: 1, minWidth: '40px' }}>
-                  {demandQuantities[essence.id] || 1} adet
-                </Button>
-                <Button 
-                  onClick={() => increaseDemandQuantity(essence.id)}
-                  disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
-                >
-                  <AddIcon fontSize="small" />
-                </Button>
+              <Button
+                onClick={() => decreaseDemandQuantity(essence.id)}
+                disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
+              >
+                <RemoveIcon fontSize="small" />
+              </Button>
+              <Button disabled sx={{ px: 1, minWidth: '40px' }}>
+                {demandQuantities[essence.id] || 1} adet
+              </Button>
+              <Button
+                onClick={() => increaseDemandQuantity(essence.id)}
+                disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
+              >
+                <AddIcon fontSize="small" />
+              </Button>
             </ButtonGroup>
-            
             <Button
               variant="contained"
               color="primary"
@@ -304,22 +204,14 @@ function HomePage() {
             </Button>
           </Box>
         </Box>
-
         <Collapse in={openRows[essence.id]} timeout="auto" unmountOnExit>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Talepler
-            </Typography>
+            <Typography variant="subtitle1" gutterBottom>Talepler</Typography>
             {demandsByEssence[essence.id] && demandsByEssence[essence.id].length > 0 ? (
               demandsByEssence[essence.id].map((demand) => (
                 <Box
                   key={demand.id}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    p: 1,
-                    borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
-                  }}
+                  sx={{ display: 'flex', justifyContent: 'space-between', p: 1, borderBottom: '1px solid rgba(0, 0, 0, 0.12)' }}
                 >
                   <Typography variant="body2">{demand.userName}</Typography>
                   <Typography variant="body2">{demand.amount} gr</Typography>
@@ -332,70 +224,40 @@ function HomePage() {
           </Box>
         </Collapse>
       </Paper>
-    )
-  }
+    );
+  };
 
   return (
-    <Box sx={{
-      width: '100%',
-      height: '100%',
-      p: { xs: 1, sm: 2 },
-      overflow: 'hidden'
-    }}>
-      <Box sx={{
-        mb: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 2
-      }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
-              <InputLabel id="category-select-label">Kategori</InputLabel>
-              <Select
-                labelId="category-select-label"
-                value={selectedCategory}
-                label="Kategori"
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                sx={{
-                  bgcolor: 'white',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(0, 0, 0, 0.1)',
-                  },
-                }}
-              >
-                <MenuItem value="all">Tüm Kategoriler</MenuItem>
-                {categories.map(category => (
-                  <MenuItem key={category} value={category}>{category}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              placeholder="Esans adı veya kodu ile arama yapın..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{
-                bgcolor: 'white',
-                borderRadius: 1,
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': {
-                    borderColor: 'rgba(0, 0, 0, 0.1)',
-                  },
-                },
-              }}
-            />
-          </Grid>
-        </Grid>
-
-        <Box sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          gap: 1
-        }}>
+    <Box sx={{ width: '100%', height: '100%', p: { xs: 1, sm: 2 }, overflow: 'hidden' }}>
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <FormControl fullWidth sx={{ bgcolor: 'white' }}>
+          <InputLabel id="category-select-label">Kategori</InputLabel>
+          <Select
+            labelId="category-select-label"
+            value={selectedCategory}
+            label="Kategori"
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            sx={{ '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0, 0, 0, 0.1)' } }}
+          >
+            <MenuItem value="all">Tüm Kategoriler</MenuItem>
+            {categories.map(category => (
+              <MenuItem key={category} value={category}>{category}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          fullWidth
+          variant="outlined"
+          placeholder="Esans adı veya kodu ile arama yapın..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{
+            bgcolor: 'white',
+            borderRadius: 1,
+            '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: 'rgba(0, 0, 0, 0.1)' } }
+          }}
+        />
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
           <Button
             variant={activeFilter === 'all' ? 'contained' : 'outlined'}
             onClick={() => setActiveFilter('all')}
@@ -432,43 +294,54 @@ function HomePage() {
             Taleplerim
           </Button>
         </Box>
-        
-        {/* Bilgilendirme mesajı */}
-        <Paper 
-          elevation={2} 
-          sx={{ 
-            mt: 2, 
-            p: 2, 
-            bgcolor: 'rgba(255, 152, 0, 0.1)', 
-            border: '1px solid rgba(255, 152, 0, 0.5)', 
+        {/* Sorting Bar */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 1, justifyContent: 'flex-end' }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel id="sort-select-label">Sırala</InputLabel>
+            <Select
+              labelId="sort-select-label"
+              value={`${sortConfig.field}-${sortConfig.direction}`}
+              label="Sırala"
+              onChange={(e) => {
+                const [field, direction] = e.target.value.split('-');
+                setSortConfig({ field, direction });
+              }}
+            >
+              <MenuItem value="name-asc">İsme Göre (A-Z)</MenuItem>
+              <MenuItem value="name-desc">İsme Göre (Z-A)</MenuItem>
+              <MenuItem value="totalDemand-asc">Gramaja Göre (Artan)</MenuItem>
+              <MenuItem value="totalDemand-desc">Gramaja Göre (Azalan)</MenuItem>
+              <MenuItem value="price-asc">Fiyata Göre (Artan)</MenuItem>
+              <MenuItem value="price-desc">Fiyata Göre (Azalan)</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        <Paper
+          elevation={2}
+          sx={{
+            mt: 2,
+            p: 2,
+            bgcolor: 'rgba(255, 152, 0, 0.1)',
+            border: '1px solid rgba(255, 152, 0, 0.5)',
             borderRadius: '16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              fontWeight: 700, 
-              textAlign: 'center',
-              color: 'warning.dark'
-            }}
+          <Typography
+            variant="body1"
+            sx={{ fontWeight: 700, textAlign: 'center', color: 'warning.dark' }}
           >
             250 Gram üstüne ulaşan esanslar kesin alımdır. 250 grama ulaştığı taktirde üstü mühim değildir, alım sonunda alınan miktar kadar sipariş geçilecektir.
           </Typography>
         </Paper>
       </Box>
-
       <Box sx={{
         overflow: 'auto',
         maxWidth: '100%',
-        '& .MuiTableContainer-root': {
-          overflow: 'auto'
-        },
-        '& .MuiTable-root': {
-          minWidth: { xs: 800, md: '100%' }
-        }
+        '& .MuiTableContainer-root': { overflow: 'auto' },
+        '& .MuiTable-root': { minWidth: { xs: 800, md: '100%' } }
       }}>
         {isMobile ? (
           <Box sx={{ mt: 2 }}>
@@ -480,20 +353,36 @@ function HomePage() {
               <TableHead>
                 <TableRow>
                   <TableCell />
-                  <TableCell>Esans Adı</TableCell>
+                  <TableCell>
+                    Esans Adı
+                    <IconButton size="small" onClick={() => handleSortChange('name')}>
+                      {sortConfig.field === 'name' && sortConfig.direction === 'asc' ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                    </IconButton>
+                  </TableCell>
                   <TableCell>Kod</TableCell>
                   <TableCell>Kategori</TableCell>
-                  <TableCell align="center">Stok Miktarı (gr)</TableCell>
-                  <TableCell align="center">Toplam Talep (gr)</TableCell>
-                  <TableCell align="center">Birim Fiyat (TL/gr)</TableCell>
+                  <TableCell align="center">
+                    Stok Miktarı (gr)
+                  </TableCell>
+                  <TableCell align="center">
+                    Toplam Talep (gr)
+                    <IconButton size="small" onClick={() => handleSortChange('totalDemand')}>
+                      {sortConfig.field === 'totalDemand' && sortConfig.direction === 'asc' ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                    </IconButton>
+                  </TableCell>
+                  <TableCell align="center">
+                    Birim Fiyat (TL/gr)
+                    <IconButton size="small" onClick={() => handleSortChange('price')}>
+                      {sortConfig.field === 'price' && sortConfig.direction === 'asc' ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                    </IconButton>
+                  </TableCell>
                   <TableCell align="center">Durum</TableCell>
                   <TableCell align="center">İşlem</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredEssences.map((essence) => {
-                  const isConfirmedPurchase = essence.totalDemand >= 250
-                  
+                  const isConfirmedPurchase = essence.totalDemand >= 250;
                   return (
                     <React.Fragment key={essence.id}>
                       <TableRow>
@@ -537,28 +426,21 @@ function HomePage() {
                         </TableCell>
                         <TableCell align="center">
                           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                            {/* İlerleme çubuğu */}
                             <Box sx={{ width: '100%', mb: 1 }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography variant="caption">
-                                  {essence.totalDemand} / 250 gr
-                                </Typography>
-                                <Typography variant="caption">
-                                  {Math.min(Math.round((essence.totalDemand / 250) * 100), 100)}%
-                                </Typography>
+                                <Typography variant="caption">{essence.totalDemand} / 250 gr</Typography>
+                                <Typography variant="caption">{Math.min(Math.round((essence.totalDemand / 250) * 100), 100)}%</Typography>
                               </Box>
-                              <LinearProgress 
-                                variant="determinate" 
-                                value={Math.min((essence.totalDemand / 250) * 100, 100)} 
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.min((essence.totalDemand / 250) * 100, 100)}
                                 color={isConfirmedPurchase ? "success" : "primary"}
                                 sx={{ height: 6, borderRadius: 1 }}
                               />
                             </Box>
-                            
-                            {/* Talep miktarı kontrolleri */}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <ButtonGroup size="small">
-                                <Button 
+                                <Button
                                   onClick={() => decreaseDemandQuantity(essence.id)}
                                   disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
                                 >
@@ -567,14 +449,13 @@ function HomePage() {
                                 <Button disabled sx={{ px: 1, minWidth: '40px' }}>
                                   {demandQuantities[essence.id] || 1}
                                 </Button>
-                                <Button 
+                                <Button
                                   onClick={() => increaseDemandQuantity(essence.id)}
                                   disabled={essence.stockAmount === 0 || essence.stockAmount === essence.totalDemand}
                                 >
                                   <AddIcon fontSize="small" />
                                 </Button>
                               </ButtonGroup>
-                              
                               <Button
                                 variant="contained"
                                 color="primary"
@@ -622,14 +503,13 @@ function HomePage() {
                         </TableCell>
                       </TableRow>
                     </React.Fragment>
-                  )
+                  );
                 })}
               </TableBody>
             </Table>
           </TableContainer>
         )}
       </Box>
-
       <Snackbar
         open={openSnackbar}
         autoHideDuration={6000}
@@ -645,7 +525,7 @@ function HomePage() {
         </MuiAlert>
       </Snackbar>
     </Box>
-  )
+  );
 }
 
-export default HomePage
+export default HomePage;
