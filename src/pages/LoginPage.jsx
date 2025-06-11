@@ -4,7 +4,7 @@ import { Box, Container, TextField, Button, Typography, Paper, Snackbar } from '
 import MuiAlert from '@mui/material/Alert'
 import { useFirebase } from '../firebase/FirebaseContext'
 
-function LoginPage() {test
+function LoginPage() {
   const navigate = useNavigate()
   const { login } = useFirebase()
 
