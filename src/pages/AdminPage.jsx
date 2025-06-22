@@ -273,6 +273,81 @@ export default function AdminPage() {
     XLSX.writeFile(wb, 'esans_sablonu.xlsx')
   }
 
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0]
+    if (!file) {
+      setSnackbarMessage('Dosya seçilmedi.')
+      setOpenSnackbar(true)
+      return;
+    }
+
+    const reader = new FileReader()
+
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+        const newEssences = jsonData.slice(1).map((row) => ({
+          name: row[0] || 'İsimsiz Esans',
+          code: String(row[1] || '').trim(),
+          category: row[2] || '',
+          stockAmount: Number(row[3]) || 0,
+          totalDemand: Number(row[4]) || 0,
+          price: Number(row[5]) || 0,
+          targetAmount: 250,
+          demands: []
+        }))
+
+        let addedCount = 0;
+        let skippedCount = 0;
+
+        for (const essence of newEssences) {
+          if (!essence.code || !/^[A-Za-z0-9]+$/.test(essence.code)) {
+            console.warn(`Geçersiz veya boş kod nedeniyle atlandı: ${essence.name || 'Bilinmeyen Esans'}`);
+            skippedCount++;
+            continue;
+          }
+
+          const codeExists = essences.some(existingEssence => existingEssence.code === essence.code);
+          if (codeExists) {
+            console.warn(`Bu kod zaten kullanılmakta, esans atlandı: ${essence.code}`);
+            skippedCount++;
+            continue;
+          }
+          
+          await addEssence(essence);
+          addedCount++;
+        }
+
+        if (addedCount > 0 && skippedCount === 0) {
+          setSnackbarMessage(`${addedCount} esans başarıyla içe aktarıldı.`);
+        } else if (addedCount > 0 && skippedCount > 0) {
+          setSnackbarMessage(`${addedCount} esans içe aktarıldı, ${skippedCount} esans atlandı (geçersiz/tekrar eden kod nedeniyle).`);
+        } else if (addedCount === 0 && skippedCount > 0) {
+            setSnackbarMessage(`Tüm esanslar geçersiz/tekrar eden kod nedeniyle atlandı.`);
+        } else {
+            setSnackbarMessage('Excel dosyasında içe aktarılacak geçerli esans bulunamadı.');
+        }
+        setOpenSnackbar(true);
+
+      } catch (error) {
+        console.error("Error importing essences from Excel:", error);
+        setSnackbarMessage('Esanslar içe aktarılırken bir hata oluştu: ' + error.message);
+        setOpenSnackbar(true);
+      }
+    }
+
+    reader.onerror = () => {
+        setSnackbarMessage('Dosya okuma hatası.');
+        setOpenSnackbar(true);
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
   const filteredEssences = essences.filter((essence) => {
     const lowerSearch = searchTerm.toLowerCase()
     return (
@@ -288,7 +363,6 @@ export default function AdminPage() {
         Esans Yönetimi
       </Typography>
 
-      {/* Arama Çubuğu */}
       <TextField
         label="Esans Ara"
         variant="outlined"
@@ -317,7 +391,7 @@ export default function AdminPage() {
             disabled={selectedEssences.length === 0}
             sx={{ mr: 2 }}
           >
-            Seçilenleri Sil
+            Seçilenleri Sil ({selectedEssences.length})
           </Button>
 
           <Button
@@ -325,8 +399,25 @@ export default function AdminPage() {
             color="info"
             startIcon={<DownloadIcon />}
             onClick={downloadTemplate}
+            sx={{ mr: 2 }}
           >
             Şablon İndir
+          </Button>
+
+          <Button
+            variant="contained"
+            component="label"
+            color="success"
+            startIcon={<DownloadIcon style={{ transform: 'rotate(180deg)' }} />}
+          >
+            Excel Yükle
+            <input
+              type="file"
+              hidden
+              accept=".xlsx, .xls"
+              onChange={handleFileUpload}
+              onClick={(event) => { event.target.value = null }}
+            />
           </Button>
         </Box>
       </Box>
@@ -475,7 +566,6 @@ export default function AdminPage() {
         </Table>
       </TableContainer>
 
-      {/* Esans Ekle/Düzenle Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingEssence ? 'Esans Düzenle' : 'Yeni Esans Ekle'}</DialogTitle>
         <DialogContent>
@@ -549,7 +639,6 @@ export default function AdminPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Onay Diyaloğu */}
       <Dialog
         open={confirmDeleteDialog}
         onClose={() => setConfirmDeleteDialog(false)}
@@ -567,7 +656,6 @@ export default function AdminPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={openSnackbar}
         autoHideDuration={4000}
