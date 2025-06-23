@@ -39,32 +39,18 @@ import { useTheme, useMediaQuery } from '@mui/material'
 import { Grid } from '@mui/material'
 
 function HomePage() {
-  // Firebase bağlamından gerekli fonksiyonları ve kullanıcı bilgisini alıyoruz
   const { subscribeToEssences, addDemand, subscribeToDemands, currentUser } = useFirebase()
-
-  // Esans listesini tutan state
   const [essences, setEssences] = useState([])
-  // Esanslara göre gruplandırılmış talepleri tutan state
   const [demandsByEssence, setDemandsByEssence] = useState({})
-
-  // Tema ve mobil görünüm için medya sorgusu
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-
-  // Açık/kapalı satırları yöneten state (genişletilebilir tablolar için)
   const [openRows, setOpenRows] = useState({})
-  // Snackbar bildirimlerini yöneten state'ler
   const [openSnackbar, setOpenSnackbar] = useState(false)
   const [snackbarMessage, setSnackbarMessage] = useState('')
   const [snackbarSeverity, setSnackbarSeverity] = useState('success')
-  // Her esans için talep edilecek adedi tutan state
   const [demandQuantities, setDemandQuantities] = useState({})
-
-  // Verilerin manuel olarak yenilenmesini tetikleyen sayaç
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
-  // Firebase'deki esans koleksiyonunu dinleyen useEffect
-  // refreshTrigger değiştiğinde yeniden tetiklenir
   useEffect(() => {
     const unsubscribe = subscribeToEssences((updatedEssences) => {
       setEssences(updatedEssences)
@@ -72,63 +58,68 @@ function HomePage() {
     return () => unsubscribe()
   }, [subscribeToEssences, refreshTrigger])
 
-  // Firebase'deki talep koleksiyonunu dinleyen ve talepleri esans ID'sine göre gruplayan useEffect
-  // refreshTrigger değiştiğinde yeniden tetiklenir
   useEffect(() => {
     const unsubscribeDemands = subscribeToDemands((allDemands) => {
       const groupedDemands = allDemands.reduce((acc, demand) => {
-        const { essenceId } = demand;
+        const { essenceId } = demand
         if (!acc[essenceId]) {
-          acc[essenceId] = [];
+          acc[essenceId] = []
         }
         acc[essenceId].push({
           id: demand.id,
-          userId: demand.userId, // Kullanıcı ID'sini de ekleyelim
+          userId: demand.userId,
           userName: demand.userName || 'Bilinmeyen Kullanıcı',
           amount: demand.amount,
           date: demand.createdAt?.toDate ? demand.createdAt.toDate() : new Date()
-        });
-        acc[essenceId].sort((a, b) => b.date - a.date); // Talepleri tarihe göre sırala
-        return acc;
-      }, {});
-      setDemandsByEssence(groupedDemands);
-    });
+        })
+        acc[essenceId].sort((a, b) => b.date - a.date)
+        return acc
+      }, {})
+      setDemandsByEssence(groupedDemands)
 
-    return () => unsubscribeDemands();
-  }, [subscribeToDemands, refreshTrigger]);
+      // Taleplerin toplamını kontrol ederek essences state'ini güncelle
+      setEssences(prevEssences =>
+        prevEssences.map(essence => {
+          const demands = groupedDemands[essence.id] || []
+          const calculatedTotalDemand = demands.reduce((sum, demand) => sum + demand.amount, 0)
+          return {
+            ...essence,
+            totalDemand: calculatedTotalDemand // totalDemand'ı taleplerin toplamıyla güncelle
+          }
+        })
+      )
+    })
 
-  // Esanslar yüklendiğinde veya değiştiğinde varsayılan talep adetlerini ayarlar
+    return () => unsubscribeDemands()
+  }, [subscribeToDemands, refreshTrigger])
+
   useEffect(() => {
-    const initialDemandQuantities = {};
+    const initialDemandQuantities = {}
     essences.forEach(essence => {
-      initialDemandQuantities[essence.id] = initialDemandQuantities[essence.id] || 1; // Varsayılan 1 adet (50 gram)
-    });
-    setDemandQuantities(initialDemandQuantities);
-  }, [essences]);
+      initialDemandQuantities[essence.id] = initialDemandQuantities[essence.id] || 1
+    })
+    setDemandQuantities(initialDemandQuantities)
+  }, [essences])
 
-  // Talep adedini artıran fonksiyon (maksimum 5 adet)
   const increaseDemandQuantity = (essenceId) => {
     setDemandQuantities(prev => ({
       ...prev,
-      [essenceId]: Math.min((prev[essenceId] || 1) + 1, 5) // Maksimum 5 adet (250 gram)
-    }));
-  };
+      [essenceId]: Math.min((prev[essenceId] || 1) + 1, 5)
+    }))
+  }
 
-  // Talep adedini azaltan fonksiyon (minimum 1 adet)
   const decreaseDemandQuantity = (essenceId) => {
     setDemandQuantities(prev => ({
       ...prev,
-      [essenceId]: Math.max((prev[essenceId] || 1) - 1, 1) // Minimum 1 adet (50 gram)
-    }));
-  };
+      [essenceId]: Math.max((prev[essenceId] || 1) - 1, 1)
+    }))
+  }
 
-  // Talep oluşturma işlemi
   const handleCreateDemand = async (essence) => {
-    const quantity = demandQuantities[essence.id] || 1; // Seçilen adet
-    const amount = quantity * 50; // Her adet 50 gram
+    const quantity = demandQuantities[essence.id] || 1
+    const amount = quantity * 50 // Toplam talep edilen gramaj
 
     try {
-      // Stok kontrolü yapılıyor
       if (essence.stockAmount < amount || essence.totalDemand + amount > essence.stockAmount) {
         setSnackbarMessage('Stok miktarı yetersiz')
         setSnackbarSeverity('error')
@@ -136,57 +127,34 @@ function HomePage() {
         return
       }
 
-      // Optimistik güncelleme: UI'yı hemen güncelle
-      // totalDemand artık Cloud Function tarafından güncelleneceği için,
-      // bu optimistik güncelleme sadece görsel bir geri bildirim sağlar.
-      // Firebase'den gelen gerçek data ile üzerine yazılacaktır.
-      setEssences(prevEssences =>
-        prevEssences.map(e =>
-          e.id === essence.id
-            ? { ...e, totalDemand: e.totalDemand + amount }
-            : e
-        )
-      );
-
-      // Her adet için ayrı bir talep oluştur (her talep 50 gram)
-      // userId bilgisi burada eklenecek
+      // Her adet için ayrı talep oluştur
       for (let i = 0; i < quantity; i++) {
         await addDemand(essence.id, {
-          amount: 50, // Her talep 50 gram
+          amount: 50,
           totalPrice: 50 * essence.price,
           category: essence.category,
-          userId: currentUser?.uid, // Kullanıcı ID'sini ekle
+          userId: currentUser?.uid,
           userName: `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || 'Bilinmeyen Kullanıcı'
         })
       }
 
+      // Optimistik güncelleme kaldırıldı, çünkü Firebase'den gelen veriyle senkronize edilecek
       setSnackbarMessage(`${quantity} adet (${amount} gram) talep başarıyla oluşturuldu`)
       setSnackbarSeverity('success')
     } catch (error) {
-      // Hata durumunda optimistik güncellemeyi geri al
-      // Cloud Function tarafından gelecek olan doğru veri yine de üzerine yazacaktır
-      setEssences(prevEssences =>
-        prevEssences.map(e =>
-          e.id === essence.id
-            ? { ...e, totalDemand: e.totalDemand - amount }
-            : e
-        )
-      );
       setSnackbarMessage(error.message || 'Talep oluşturulurken bilinmeyen bir hata oluştu.')
       setSnackbarSeverity('error')
     }
     setOpenSnackbar(true)
   }
 
-  // "Verileri Yenile" butonu için fonksiyon
   const handleRefresh = () => {
-    setRefreshTrigger(prev => prev + 1); // Sayacı artırarak useEffect'leri yeniden tetikler
-    setSnackbarMessage('Veriler yenileniyor...');
-    setSnackbarSeverity('info');
-    setOpenSnackbar(true);
-  };
+    setRefreshTrigger(prev => prev + 1)
+    setSnackbarMessage('Veriler yenileniyor...')
+    setSnackbarSeverity('info')
+    setOpenSnackbar(true)
+  }
 
-  // Satır açma/kapama (collapse) işlemi
   const toggleRow = (id) => {
     setOpenRows(prev => ({
       ...prev,
@@ -194,32 +162,28 @@ function HomePage() {
     }))
   }
 
-  // Arama ve filtreleme state'leri
   const [searchTerm, setSearchTerm] = useState('')
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
 
-  // Mevcut esanslardan kategori listesi oluşturur
   const categories = [...new Set(essences.map(essence => essence.category))].filter(Boolean)
 
-  // Mevcut kullanıcının talep ettiği esans ID'lerini hesaplar
   const userDemandedEssenceIds = useMemo(() => {
-    if (!currentUser) return [];
+    if (!currentUser) return []
     
-    const essenceIds = [];
+    const essenceIds = []
     Object.entries(demandsByEssence).forEach(([essenceId, demands]) => {
       const hasUserDemand = demands.some(demand => 
-        demand.userId === currentUser.uid || // Kullanıcı ID'si ile kontrol
-        demand.userName === `${currentUser.firstName} ${currentUser.lastName}`.trim() // Kullanıcı adı ile yedek kontrol
-      );
+        demand.userId === currentUser.uid ||
+        demand.userName === `${currentUser.firstName} ${currentUser.lastName}`.trim()
+      )
       if (hasUserDemand) {
-        essenceIds.push(essenceId);
+        essenceIds.push(essenceId)
       }
-    });
-    return essenceIds;
-  }, [currentUser, demandsByEssence]);
+    })
+    return essenceIds
+  }, [currentUser, demandsByEssence])
 
-  // Filtrelenmiş ve sıralanmış esans listesini hesaplar
   const filteredEssences = essences
     .filter(essence => {
       const matchesSearch = 
@@ -229,7 +193,7 @@ function HomePage() {
       const matchesCategory = 
         selectedCategory === 'all' || essence.category === selectedCategory
         
-      const isUserDemanded = userDemandedEssenceIds.includes(essence.id);
+      const isUserDemanded = userDemandedEssenceIds.includes(essence.id)
 
       switch(activeFilter) {
         case 'confirmed':
@@ -244,9 +208,8 @@ function HomePage() {
           return matchesSearch && matchesCategory
       }
     })
-    .sort((a, b) => b.totalDemand - a.totalDemand) // totalDemand'a göre azalan sıralama
+    .sort((a, b) => b.totalDemand - a.totalDemand)
 
-  // Mobil görünüm için kart bileşeni
   const renderMobileCard = (essence) => {
     const isConfirmedPurchase = essence.totalDemand >= 250
         
@@ -279,7 +242,6 @@ function HomePage() {
           Birim Fiyat: {essence.price} TL/gr
         </Box>
 
-        {/* İlerleme çubuğu */}
         <Box sx={{ mt: 2, mb: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
             <Typography variant="caption">
@@ -480,17 +442,15 @@ function HomePage() {
           </Button>
         </Box>
 
-        {/* Verileri Yenile butonu */}
         <Button
           variant="outlined"
           onClick={handleRefresh}
           startIcon={<Autorenew />}
-          sx={{ mt: 1, alignSelf: 'flex-end' }} // Sağ tarafa yaslamak için
+          sx={{ mt: 1, alignSelf: 'flex-end' }}
         >
           Verileri Yenile
         </Button>
 
-        {/* Bilgilendirme mesajı */}
         <Paper
           elevation={2}
           sx={{
@@ -595,7 +555,6 @@ function HomePage() {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                            {/* İlerleme çubuğu */}
                             <Box sx={{ width: '100%', mb: 1 }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                                 <Typography variant="caption">
@@ -613,7 +572,6 @@ function HomePage() {
                               />
                             </Box>
 
-                            {/* Talep miktarı kontrolleri */}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <ButtonGroup size="small">
                                 <Button
