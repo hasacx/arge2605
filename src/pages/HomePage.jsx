@@ -52,12 +52,15 @@ function HomePage() {
   const [snackbarSeverity, setSnackbarSeverity] = useState('success')
   const [demandQuantities, setDemandQuantities] = useState({}) // Her esans için talep adedini tutacak state
 
+  // Yeni refreshTrigger state'i
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
   useEffect(() => {
     const unsubscribe = subscribeToEssences((updatedEssences) => {
       setEssences(updatedEssences)
     })
     return () => unsubscribe()
-  }, [subscribeToEssences])
+  }, [subscribeToEssences, refreshTrigger]) // refreshTrigger'ı bağımlılık olarak ekledik
 
   // Subscribe to Demands and group them by essenceId
   useEffect(() => {
@@ -82,7 +85,7 @@ function HomePage() {
     });
 
     return () => unsubscribeDemands();
-  }, [subscribeToDemands]);
+  }, [subscribeToDemands, refreshTrigger]); // refreshTrigger'ı bağımlılık olarak ekledik
 
   // Esans yüklenirken varsayılan talep adedini ayarla
   useEffect(() => {
@@ -121,6 +124,15 @@ function HomePage() {
         return
       }
 
+      // Optimistik güncelleme: UI'yı hemen güncelle
+      setEssences(prevEssences =>
+        prevEssences.map(e =>
+          e.id === essence.id
+            ? { ...e, totalDemand: e.totalDemand + amount }
+            : e
+        )
+      );
+
       // Her adet için ayrı bir talep oluştur
       for (let i = 0; i < quantity; i++) {
         await addDemand(essence.id, {
@@ -133,11 +145,27 @@ function HomePage() {
       setSnackbarMessage(`${quantity} adet (${amount} gram) talep başarıyla oluşturuldu`)
       setSnackbarSeverity('success')
     } catch (error) {
+      // Hata durumunda optimistik güncellemeyi geri al
+      setEssences(prevEssences =>
+        prevEssences.map(e =>
+          e.id === essence.id
+            ? { ...e, totalDemand: e.totalDemand - amount }
+            : e
+        )
+      );
       setSnackbarMessage(error.message || 'Talep oluşturulurken bilinmeyen bir hata oluştu.')
       setSnackbarSeverity('error')
     }
     setOpenSnackbar(true)
   }
+
+  // Verileri yenileme fonksiyonu
+  const handleRefresh = () => {
+    setRefreshTrigger(prev => prev + 1); // Sayacı artırarak useEffect'i tetikle
+    setSnackbarMessage('Veriler yenileniyor...');
+    setSnackbarSeverity('info');
+    setOpenSnackbar(true);
+  };
 
   const toggleRow = (id) => {
     setOpenRows(prev => ({
@@ -178,7 +206,7 @@ function HomePage() {
       
       const matchesCategory = 
         selectedCategory === 'all' || essence.category === selectedCategory
-          
+        
       // Kullanıcının talep ettiği esansları kontrol et
       const isUserDemanded = userDemandedEssenceIds.includes(essence.id);
 
@@ -430,6 +458,16 @@ function HomePage() {
             Taleplerim
           </Button>
         </Box>
+
+        {/* Verileri Yenile butonu */}
+        <Button
+          variant="outlined"
+          onClick={handleRefresh}
+          startIcon={<Autorenew />}
+          sx={{ mt: 1, alignSelf: 'flex-end' }} // Sağ tarafa yaslamak için
+        >
+          Verileri Yenile
+        </Button>
 
         {/* Bilgilendirme mesajı */}
         <Paper
