@@ -86,7 +86,11 @@ function ProfilePage() {
           if (essence) {
             return {
               ...demand,
-              totalPrice: essence.price, // Update with the current price
+              // totalPrice'ı esansın güncel fiyatı ile güncelliyoruz
+              // Firebase'e kaydederken eğer 50 gramlık bir talepse, essence.price * 50 yapmanız gerekir.
+              // Şu anki durumda totalPrice sadece birim fiyatı tutuyor gibi görünüyor.
+              // Eğer totalPrice'ın toplam tutar olması bekleniyorsa: demand.amount * essence.price
+              totalPrice: essence.price, 
             };
           }
           return demand;
@@ -169,13 +173,12 @@ function ProfilePage() {
             <Typography variant="h5" component="div">
               Talep Geçmişim
             </Typography>
-
           </Box>
           <Paper elevation={3}>
             <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: '4px 4px 0 0' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'right' }}>
                 Toplam Tutar: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(
-                  demands.reduce((total, demand) => total + (demand.totalPrice || 0), 0)
+                  demands.reduce((total, demand) => total + (parseFloat(demand.totalPrice) || 0), 0)
                 )}
               </Typography>
             </Box>
@@ -186,7 +189,7 @@ function ProfilePage() {
                     <TableCell>Esans</TableCell>
                     <TableCell>Miktar</TableCell>
                     <TableCell>Tarih</TableCell>
-                    <TableCell>Birim Fiyat</TableCell>
+                    <TableCell>Birim Fiyat</TableCell> {/* Bu başlığı "Toplam Fiyat" olarak değiştirebilirsiniz */}
                     <TableCell>İşlemler</TableCell>
                   </TableRow>
                 </TableHead>
@@ -200,7 +203,7 @@ function ProfilePage() {
                       </TableCell>
                       <TableCell>
                         {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(
-                          demand.totalPrice || 0
+                          parseFloat(demand.totalPrice) || 0
                         )}
                       </TableCell>
                       <TableCell>
