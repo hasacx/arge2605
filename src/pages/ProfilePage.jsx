@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
-import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar, Checkbox, Button } from '@mui/material'
-import { useFirebase } from '../firebase/FirebaseContext'
-import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationIcon, LocationCity as LocationCityIcon, Home as HomeIcon, Delete as DeleteIcon, Autorenew as AutorenewIcon } from '@mui/icons-material'
-import MuiAlert from '@mui/material/Alert'
+import React, { useState, useEffect } from 'react';
+import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar, Checkbox, Button } from '@mui/material';
+import { useFirebase } from '../firebase/FirebaseContext';
+import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationIcon, LocationCity as LocationCityIcon, Home as HomeIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import MuiAlert from '@mui/material/Alert';
 
 function ProfilePage() {
-  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences, updateDemand } = useFirebase()
+  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences, updateDemand } = useFirebase();
 
   const [userInfo, setUserInfo] = useState({
     firstName: '',
@@ -16,16 +16,16 @@ function ProfilePage() {
     district: '',
     neighborhood: '',
     address: ''
-  })
+  });
 
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
     severity: 'success'
-  })
+  });
 
-  const [demands, setDemands] = useState([])
-  const [essences, setEssences] = useState([])
+  const [demands, setDemands] = useState([]);
+  const [essences, setEssences] = useState([]);
 
   useEffect(() => {
     if (currentUser) {
@@ -38,104 +38,87 @@ function ProfilePage() {
         district: currentUser.district || '',
         neighborhood: currentUser.neighborhood || '',
         address: currentUser.address || ''
-      })
+      });
     }
-  }, [currentUser])
+  }, [currentUser]);
 
   useEffect(() => {
     const fetchDemands = async () => {
       if (currentUser) {
         try {
-          const userDemands = await getUserDemands(currentUser.uid)
+          const userDemands = await getUserDemands(currentUser.uid);
           setDemands(userDemands.sort((a, b) => {
-            const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
-            if (nameComparison !== 0) return nameComparison
-            return b.createdAt - a.createdAt
-          }))
+            const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR');
+            if (nameComparison !== 0) return nameComparison;
+            return b.createdAt - a.createdAt;
+          }));
         } catch (error) {
-          console.error('Talepler yüklenirken hata oluştu:', error)
+          console.error('Talepler yüklenirken hata oluştu:', error);
         }
       }
-    }
-    fetchDemands()
-  }, [currentUser])
+    };
+    fetchDemands();
+  }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return
+    if (!currentUser) return;
     const unsubscribeDemands = subscribeToDemands((allDemands) => {
-      const userDemands = allDemands.filter(d => d.userId === currentUser.uid)
+      const userDemands = allDemands.filter(d => d.userId === currentUser.uid);
       setDemands(userDemands.sort((a, b) => {
-        const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
-        if (nameComparison !== 0) return nameComparison
-        return b.createdAt - a.createdAt
-      }))
-    })
-    return () => unsubscribeDemands()
-  }, [currentUser, subscribeToDemands])
+        const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR');
+        if (nameComparison !== 0) return nameComparison;
+        return b.createdAt - a.createdAt;
+      }));
+    });
+    return () => unsubscribeDemands();
+  }, [currentUser, subscribeToDemands]);
 
   useEffect(() => {
-    const unsubscribeEssences = subscribeToEssences((updatedEssences) => {
-      setEssences(updatedEssences)
-    })
-    return () => unsubscribeEssences()
-  }, [subscribeToEssences])
+    if (!currentUser) return;
 
-  const handleRefreshPrices = async () => {
-    try {
-      const updatedDemands = await Promise.all(demands.map(async (demand) => {
-        const essence = essences.find(e => e.id === demand.essenceId)
-        if (essence) {
-          const newTotalPrice = essence.price // Birim fiyat doğrudan alınır
-          // Firebase'de talebi güncelle
-          await updateDemand(demand.id, { totalPrice: newTotalPrice })
-          return {
-            ...demand,
-            totalPrice: newTotalPrice
+    const unsubscribeEssences = subscribeToEssences((updatedEssences) => {
+      setEssences(updatedEssences);
+
+      // Update totalPrice in demands based on the new essence prices
+      setDemands((prevDemands) =>
+        prevDemands.map((demand) => {
+          const essence = updatedEssences.find((e) => e.id === demand.essenceId);
+          if (essence) {
+            return {
+              ...demand,
+              totalPrice: essence.price, // Update with the current price
+            };
           }
-        }
-        return demand
-      }))
-      setDemands(updatedDemands.sort((a, b) => {
-        const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
-        if (nameComparison !== 0) return nameComparison
-        return b.createdAt - a.createdAt
-      }))
-      setSnackbar({
-        open: true,
-        message: 'Fiyatlar başarıyla güncellendi ve kaydedildi',
-        severity: 'success'
-      })
-    } catch (error) {
-      console.error('Fiyatlar güncellenirken hata oluştu:', error)
-      setSnackbar({
-        open: true,
-        message: 'Fiyatlar güncellenirken bir hata oluştu',
-        severity: 'error'
-      })
-    }
-  }
+          return demand;
+        })
+      );
+    });
+
+    return () => unsubscribeEssences();
+  }, [currentUser, subscribeToEssences]);
+
 
   const handleDemandDelete = async (demandToDelete) => {
     try {
-      await deleteDemand(demandToDelete.id)
-      setDemands(prevDemands => prevDemands.filter(demand => demand.id !== demandToDelete.id))
+      await deleteDemand(demandToDelete.id);
+      setDemands(prevDemands => prevDemands.filter(demand => demand.id !== demandToDelete.id));
       setSnackbar({
         open: true,
         message: 'Talep başarıyla iptal edildi',
         severity: 'success'
-      })
+      });
     } catch (error) {
       setSnackbar({
         open: true,
         message: 'Talep silinirken bir hata oluştu',
         severity: 'error'
-      })
+      });
     }
-  }
+  };
 
   const handleSnackbarClose = () => {
-    setSnackbar({ ...snackbar, open: false })
-  }
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   return (
     <Box sx={{ width: '100%', height: '100%', p: 2 }}>
@@ -186,13 +169,7 @@ function ProfilePage() {
             <Typography variant="h5" component="div">
               Talep Geçmişim
             </Typography>
-            <Button
-              variant="outlined"
-              onClick={handleRefreshPrices}
-              startIcon={<AutorenewIcon />}
-            >
-              Fiyatları Yenile
-            </Button>
+
           </Box>
           <Paper elevation={3}>
             <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: '4px 4px 0 0' }}>
@@ -258,7 +235,7 @@ function ProfilePage() {
         </MuiAlert>
       </Snackbar>
     </Box>
-  )
+  );
 }
 
-export default ProfilePage
+export default ProfilePage;
