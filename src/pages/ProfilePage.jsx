@@ -88,7 +88,7 @@ function ProfilePage() {
         if (essence) {
           return {
             ...demand,
-            totalPrice: demand.amount * essence.price
+            totalPrice: demand.amount * essence.price // Güncel fiyatla totalPrice hesapla
           }
         }
         return demand
@@ -246,7 +246,7 @@ function ProfilePage() {
         onClose={handleSnackbarClose}
       >
         <MuiAlert
-          elevation={6}
+ eviction={6}
           variant="filled"
           severity={snackbar.severity}
           onClose={handleSnackbarClose}
