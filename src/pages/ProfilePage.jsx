@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // useRef'i ekledik
 import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar } from '@mui/material';
 import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationIcon, LocationCity as LocationCityIcon, Home as HomeIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import MuiAlert from '@mui/material/Alert';
 
 function ProfilePage() {
-  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences } = useFirebase(); // updateDemand kaldırıldı, çünkü artık talepleri Firebase'de güncellemiyoruz
+  const { currentUser, deleteDemand, subscribeToDemands, subscribeToEssences } = useFirebase();
 
   const [userInfo, setUserInfo] = useState({
     firstName: '',
@@ -24,9 +24,10 @@ function ProfilePage() {
   });
 
   const [demands, setDemands] = useState([]);
-  const [essencesMap, setEssencesMap] = useState({}); // Esansları hızlı erişim için map olarak tutacağız
-  const [loading, setLoading] = useState(true); // Yüklenme durumu için state
+  const essencesMapRef = useRef({}); // Esansları useRef ile tutuyoruz, böylece bağımlılık döngüsüne girmez
+  const [loading, setLoading] = useState(true);
 
+  // Kullanıcı bilgileri için useEffect
   useEffect(() => {
     if (currentUser) {
       setUserInfo({
@@ -42,6 +43,7 @@ function ProfilePage() {
     }
   }, [currentUser]);
 
+  // Talepleri ve Esansları dinlemek için ana useEffect
   useEffect(() => {
     if (!currentUser) {
       setLoading(false);
@@ -51,80 +53,76 @@ function ProfilePage() {
     let unsubscribeEssences;
     let unsubscribeDemands;
 
-    // Tüm veri yükleme ve senkronizasyon işlemlerini tek bir useEffect içinde yönetiyoruz
-    const setupListeners = async () => {
-      setLoading(true);
+    setLoading(true);
 
-      // 1. Esansları dinlemeye başla (öncelikli olarak esans fiyatlarına ihtiyacımız var)
-      unsubscribeEssences = subscribeToEssences((updatedEssences) => {
-        const newEssencesMap = updatedEssences.reduce((acc, essence) => {
-          acc[essence.id] = essence;
-          return acc;
-        }, {});
-        setEssencesMap(newEssencesMap); // Esanslar güncellendiğinde map'i güncelle
-        
-        // Esanslar güncellendiğinde, mevcut taleplerin fiyatlarını da yeniden hesapla
-        // Bu, fiyatlar değiştiğinde tablonun otomatik güncellenmesini sağlar
-        setDemands((prevDemands) =>
-          prevDemands.map((demand) => {
-            const essence = newEssencesMap[demand.essenceId];
-            if (essence) {
-              // demand.amount * essence.price yaparak toplam tutarı hesaplıyoruz
-              const calculatedTotalPrice = demand.amount * essence.price;
-              return {
-                ...demand,
-                totalPrice: calculatedTotalPrice, // Talebin toplam fiyatını güncelle
-              };
-            }
-            return demand;
-          })
-        );
-      });
+    // 1. Esansları dinlemeye başla
+    unsubscribeEssences = subscribeToEssences((updatedEssences) => {
+      // useRef'i güncelleyelim, böylece diğer callback'ler en yeni verilere erişebilir
+      essencesMapRef.current = updatedEssences.reduce((acc, essence) => {
+        acc[essence.id] = essence;
+        return acc;
+      }, {});
 
-      // 2. Talepleri dinlemeye başla
-      unsubscribeDemands = subscribeToDemands((allDemands) => {
-        const userDemands = allDemands.filter(d => d.userId === currentUser.uid);
-
-        // Talepler geldiğinde, elimizdeki güncel esans bilgileriyle (essencesMap) fiyatları hesapla
-        // Bu, yeni talepler eklendiğinde veya mevcut talepler değiştiğinde doğru fiyatları gösterir
-        const updatedUserDemands = userDemands.map(demand => {
-          const essence = essencesMap[demand.essenceId]; // Güncel esans map'ini kullan
-          let calculatedTotalPrice = 0;
-
+      // Essences güncellendiğinde talepleri de tetikleyelim,
+      // böylece mevcut demands state'i de güncel essence fiyatlarıyla yeniden hesaplanır.
+      // Bu, `setDemands`'i doğrudan bu callback içinde çağırarak olur,
+      // çünkü `unsubscribeDemands` zaten tüm talepleri yeniden çekecektir.
+      // Ancak buradaki temel amaç, `essencesMapRef.current`'i güncelleyip,
+      // `demands` callback'inin sonraki çalışmasını doğru verilerle yapmasını sağlamaktır.
+      // Ya da direkt burada demands state'ini güncelleyebiliriz:
+      setDemands((prevDemands) =>
+        prevDemands.map((demand) => {
+          const essence = essencesMapRef.current[demand.essenceId];
           if (essence) {
-            calculatedTotalPrice = demand.amount * essence.price;
-          } else {
-            // Eğer esans bilgisi henüz yüklenmediyse veya bulunamadıysa,
-            // mevcut totalPrice değerini kullan (güvenli bir fallback)
-            calculatedTotalPrice = parseFloat(demand.totalPrice) || 0;
+            const calculatedTotalPrice = demand.amount * essence.price;
+            return {
+              ...demand,
+              totalPrice: calculatedTotalPrice,
+            };
           }
-          
-          return {
-            ...demand,
-            // createdAt bir Firebase Timestamp objesi olabilir, Date objesine çeviriyoruz.
-            createdAt: demand.createdAt?.toDate ? demand.createdAt.toDate() : demand.createdAt,
-            totalPrice: calculatedTotalPrice,
-          };
-        }).sort((a, b) => {
-          // Tarihleri Date objesi olarak karşılaştır
-          const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-          const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-          return dateB - dateA; // En yeni tarihten eskiye doğru sırala
-        });
+          return demand;
+        })
+      );
+    });
 
-        setDemands(updatedUserDemands);
-        setLoading(false); // Veri yükleme tamamlandı
+    // 2. Talepleri dinlemeye başla
+    unsubscribeDemands = subscribeToDemands((allDemands) => {
+      const userDemands = allDemands.filter(d => d.userId === currentUser.uid);
+
+      // Talepler geldiğinde ve essencesMapRef güncel olduğunda fiyatları hesapla
+      const updatedUserDemands = userDemands.map(demand => {
+        const essence = essencesMapRef.current[demand.essenceId]; // useRef ile güncel esansları al
+        let calculatedTotalPrice = 0;
+
+        if (essence) {
+          calculatedTotalPrice = demand.amount * essence.price;
+        } else {
+          // Eğer esans bilgisi henüz yoksa veya bulunamadıysa,
+          // mevcut totalPrice değerini kullan (daha önce kaydedilmiş hali)
+          calculatedTotalPrice = parseFloat(demand.totalPrice) || 0;
+        }
+
+        return {
+          ...demand,
+          createdAt: demand.createdAt?.toDate ? demand.createdAt.toDate() : demand.createdAt,
+          totalPrice: calculatedTotalPrice,
+        };
+      }).sort((a, b) => {
+        const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+        const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+        return dateB - dateA;
       });
-    };
 
-    setupListeners(); // Dinleyicileri başlat
+      setDemands(updatedUserDemands);
+      setLoading(false);
+    });
 
-    // Component unmount olduğunda abonelikleri temizle
+    // Cleanup fonksiyonu: Component unmount olduğunda abonelikleri temizle
     return () => {
       if (unsubscribeEssences) unsubscribeEssences();
       if (unsubscribeDemands) unsubscribeDemands();
     };
-  }, [currentUser, subscribeToDemands, subscribeToEssences, essencesMap]); // essencesMap bağımlılığı önemli!
+  }, [currentUser, subscribeToDemands, subscribeToEssences]); // essencesMapRef bağımlılıklara eklenmiyor
 
   const handleDemandDelete = async (demandToDelete) => {
     try {
@@ -147,11 +145,10 @@ function ProfilePage() {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  // Yükleme durumu veya kullanıcı yoksa gösterilecek UI
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Typography>Yükleniyor...</Typography> {/* Basit bir yükleme mesajı */}
+        <Typography>Yükleniyor...</Typography>
       </Box>
     );
   }
@@ -229,7 +226,7 @@ function ProfilePage() {
                     <TableCell>Esans</TableCell>
                     <TableCell>Miktar</TableCell>
                     <TableCell>Tarih</TableCell>
-                    <TableCell>Toplam Fiyat</TableCell> {/* Başlık güncellendi */}
+                    <TableCell>Toplam Fiyat</TableCell>
                     <TableCell>İşlemler</TableCell>
                   </TableRow>
                 </TableHead>
