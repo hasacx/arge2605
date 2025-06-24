@@ -5,7 +5,7 @@ import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationO
 import MuiAlert from '@mui/material/Alert'
 
 function ProfilePage() {
-  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences } = useFirebase()
+  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences, updateDemand } = useFirebase()
 
   const [userInfo, setUserInfo] = useState({
     firstName: '',
@@ -82,17 +82,19 @@ function ProfilePage() {
 
   const handleRefreshPrices = async () => {
     try {
-      // Talepleri güncel esans fiyatlarıyla güncelle
-      const updatedDemands = demands.map(demand => {
+      const updatedDemands = await Promise.all(demands.map(async (demand) => {
         const essence = essences.find(e => e.id === demand.essenceId)
         if (essence) {
+          const newTotalPrice = essence.price // Birim fiyat doğrudan alınır
+          // Firebase'de talebi güncelle
+          await updateDemand(demand.id, { totalPrice: newTotalPrice })
           return {
             ...demand,
-            totalPrice: demand.amount * essence.price // Güncel fiyatla totalPrice hesapla
+            totalPrice: newTotalPrice
           }
         }
         return demand
-      })
+      }))
       setDemands(updatedDemands.sort((a, b) => {
         const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
         if (nameComparison !== 0) return nameComparison
@@ -100,10 +102,11 @@ function ProfilePage() {
       }))
       setSnackbar({
         open: true,
-        message: 'Fiyatlar başarıyla güncellendi',
+        message: 'Fiyatlar başarıyla güncellendi ve kaydedildi',
         severity: 'success'
       })
     } catch (error) {
+      console.error('Fiyatlar güncellenirken hata oluştu:', error)
       setSnackbar({
         open: true,
         message: 'Fiyatlar güncellenirken bir hata oluştu',
@@ -206,7 +209,7 @@ function ProfilePage() {
                     <TableCell>Esans</TableCell>
                     <TableCell>Miktar</TableCell>
                     <TableCell>Tarih</TableCell>
-                    <TableCell>Tutar</TableCell>
+                    <TableCell>Birim Fiyat</TableCell>
                     <TableCell>İşlemler</TableCell>
                   </TableRow>
                 </TableHead>
@@ -246,7 +249,7 @@ function ProfilePage() {
         onClose={handleSnackbarClose}
       >
         <MuiAlert
- eviction={6}
+          elevation={6}
           variant="filled"
           severity={snackbar.severity}
           onClose={handleSnackbarClose}
