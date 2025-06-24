@@ -1,8 +1,29 @@
 import { useState, useEffect } from 'react'
-import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar, Checkbox, Button } from '@mui/material'
+import {
+  Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar,
+  Button
+} from '@mui/material'
 import { useFirebase } from '../firebase/FirebaseContext'
-import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationIcon, LocationCity as LocationCityIcon, Home as HomeIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import {
+  Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon,
+  LocationOn as LocationIcon, LocationCity as LocationCityIcon,
+  Home as HomeIcon, Delete as DeleteIcon
+} from '@mui/icons-material'
 import MuiAlert from '@mui/material/Alert'
+
+const fetchDemands = async (uid, getUserDemands, setDemands) => {
+  try {
+    const userDemands = await getUserDemands(uid)
+    setDemands(userDemands.sort((a, b) => {
+      const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
+      if (nameComparison !== 0) return nameComparison
+      return b.createdAt - a.createdAt
+    }))
+  } catch (error) {
+    console.error('Talepler yüklenirken hata oluştu:', error)
+  }
+}
 
 function ProfilePage() {
   const { currentUser, getUserDemands, deleteDemand, subscribeToDemands } = useFirebase()
@@ -24,6 +45,8 @@ function ProfilePage() {
     severity: 'success'
   })
 
+  const [demands, setDemands] = useState([])
+
   useEffect(() => {
     if (currentUser) {
       setUserInfo({
@@ -36,42 +59,17 @@ function ProfilePage() {
         neighborhood: currentUser.neighborhood || '',
         address: currentUser.address || ''
       })
+      fetchDemands(currentUser.uid, getUserDemands, setDemands)
     }
-  }, [currentUser])
-
-  const [demands, setDemands] = useState([])
-
-  useEffect(() => {
-    const fetchDemands = async () => {
-      if (currentUser) {
-        try {
-          const userDemands = await getUserDemands(currentUser.uid)
-          // Önce esans adına göre alfabetik sırala, sonra tarih sıralaması yap
-          setDemands(userDemands.sort((a, b) => {
-            // Öncelikle esans adına göre sırala
-            const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
-            if (nameComparison !== 0) return nameComparison
-            // Aynı esans adına sahip olanları tarihe göre sırala (yeniden eskiye)
-            return b.createdAt - a.createdAt
-          }))
-        } catch (error) {
-          console.error('Talepler yüklenirken hata oluştu:', error)
-        }
-      }
-    }
-    fetchDemands()
   }, [currentUser])
 
   useEffect(() => {
     if (!currentUser) return
     const unsubscribe = subscribeToDemands((allDemands) => {
       const userDemands = allDemands.filter(d => d.userId === currentUser.uid)
-      // Önce esans adına göre alfabetik sırala, sonra tarih sıralaması yap
       setDemands(userDemands.sort((a, b) => {
-        // Öncelikle esans adına göre sırala
         const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR')
         if (nameComparison !== 0) return nameComparison
-        // Aynı esans adına sahip olanları tarihe göre sırala (yeniden eskiye)
         return b.createdAt - a.createdAt
       }))
     })
@@ -81,7 +79,7 @@ function ProfilePage() {
   const handleDemandDelete = async (demandToDelete) => {
     try {
       await deleteDemand(demandToDelete.id)
-      setDemands(prevDemands => prevDemands.filter(demand => demand.id !== demandToDelete.id))
+      setDemands(prev => prev.filter(demand => demand.id !== demandToDelete.id))
       setSnackbar({
         open: true,
         message: 'Talep başarıyla iptal edildi',
@@ -92,6 +90,17 @@ function ProfilePage() {
         open: true,
         message: 'Talep silinirken bir hata oluştu',
         severity: 'error'
+      })
+    }
+  }
+
+  const handleRefreshDemands = async () => {
+    if (currentUser) {
+      await fetchDemands(currentUser.uid, getUserDemands, setDemands)
+      setSnackbar({
+        open: true,
+        message: 'Fiyatlar güncellendi.',
+        severity: 'info'
       })
     }
   }
@@ -149,12 +158,17 @@ function ProfilePage() {
             <Typography variant="h5" component="div">
               Talep Geçmişim
             </Typography>
+            <Button variant="outlined" size="small" onClick={handleRefreshDemands}>
+              Fiyatları Güncelle
+            </Button>
           </Box>
           <Paper elevation={3}>
             <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'primary.contrastText', borderRadius: '4px 4px 0 0' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600, textAlign: 'right' }}>
-                {/* Calculate total amount by summing totalPrice of each demand */}
-                Toplam Tutar: {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(
+                Toplam Tutar: {new Intl.NumberFormat('tr-TR', {
+                  style: 'currency',
+                  currency: 'TRY'
+                }).format(
                   demands.reduce((total, demand) => total + ((demand.amount && demand.totalPrice) ? (demand.totalPrice / demand.amount) : 0), 0)
                 )}
               </Typography>
@@ -166,7 +180,7 @@ function ProfilePage() {
                     <TableCell>Esans</TableCell>
                     <TableCell>Miktar</TableCell>
                     <TableCell>Tarih</TableCell>
-                    <TableCell>Tutar</TableCell>
+                    <TableCell>Fiyat</TableCell>
                     <TableCell>İşlemler</TableCell>
                   </TableRow>
                 </TableHead>
@@ -175,20 +189,17 @@ function ProfilePage() {
                     <TableRow key={demand.id}>
                       <TableCell>{demand.essenceName}</TableCell>
                       <TableCell>{demand.amount} gr</TableCell>
+                      <TableCell>{new Date(demand.createdAt).toLocaleDateString('tr-TR')}</TableCell>
                       <TableCell>
-                        {new Date(demand.createdAt).toLocaleDateString('tr-TR')}
-                      </TableCell>
-                      <TableCell>
-                        {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(
+                        {new Intl.NumberFormat('tr-TR', {
+                          style: 'currency',
+                          currency: 'TRY'
+                        }).format(
                           (demand.amount && demand.totalPrice) ? (demand.totalPrice / demand.amount) : 0
                         )}
                       </TableCell>
                       <TableCell>
-                        <IconButton
-                          onClick={() => handleDemandDelete(demand)}
-                          color="error"
-                          size="small"
-                        >
+                        <IconButton onClick={() => handleDemandDelete(demand)} color="error" size="small">
                           <DeleteIcon />
                         </IconButton>
                       </TableCell>
@@ -200,17 +211,9 @@ function ProfilePage() {
           </Paper>
         </Grid>
       </Grid>
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={handleSnackbarClose}
-      >
-        <MuiAlert
-          elevation={6}
-          variant="filled"
-          severity={snackbar.severity}
-          onClose={handleSnackbarClose}
-        >
+
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={handleSnackbarClose}>
+        <MuiAlert elevation={6} variant="filled" severity={snackbar.severity} onClose={handleSnackbarClose}>
           {snackbar.message}
         </MuiAlert>
       </Snackbar>
