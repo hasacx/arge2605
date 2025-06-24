@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar, Checkbox, Button } from '@mui/material';
-import { useFirebase } from '../firebase/FirebaseContext';
+import { Box, Container, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid, Card, CardContent, IconButton, Snackbar } from '@mui/material';
 import { Person as PersonIcon, Phone as PhoneIcon, Email as EmailIcon, LocationOn as LocationIcon, LocationCity as LocationCityIcon, Home as HomeIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import MuiAlert from '@mui/material/Alert';
 
 function ProfilePage() {
-  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences, updateDemand } = useFirebase();
+  const { currentUser, getUserDemands, deleteDemand, subscribeToDemands, subscribeToEssences } = useFirebase(); // updateDemand kaldırıldı, çünkü artık talepleri Firebase'de güncellemiyoruz
 
   const [userInfo, setUserInfo] = useState({
     firstName: '',
@@ -25,7 +24,8 @@ function ProfilePage() {
   });
 
   const [demands, setDemands] = useState([]);
-  const [essences, setEssences] = useState([]);
+  const [essencesMap, setEssencesMap] = useState({}); // Esansları hızlı erişim için map olarak tutacağız
+  const [loading, setLoading] = useState(true); // Yüklenme durumu için state
 
   useEffect(() => {
     if (currentUser) {
@@ -43,69 +43,92 @@ function ProfilePage() {
   }, [currentUser]);
 
   useEffect(() => {
-    const fetchDemands = async () => {
-      if (currentUser) {
-        try {
-          const userDemands = await getUserDemands(currentUser.uid);
-          setDemands(userDemands.sort((a, b) => {
-            const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR');
-            if (nameComparison !== 0) return nameComparison;
-            return b.createdAt - a.createdAt;
-          }));
-        } catch (error) {
-          console.error('Talepler yüklenirken hata oluştu:', error);
-        }
-      }
-    };
-    fetchDemands();
-  }, [currentUser]);
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
 
-  useEffect(() => {
-    if (!currentUser) return;
-    const unsubscribeDemands = subscribeToDemands((allDemands) => {
-      const userDemands = allDemands.filter(d => d.userId === currentUser.uid);
-      setDemands(userDemands.sort((a, b) => {
-        const nameComparison = a.essenceName.localeCompare(b.essenceName, 'tr-TR');
-        if (nameComparison !== 0) return nameComparison;
-        return b.createdAt - a.createdAt;
-      }));
-    });
-    return () => unsubscribeDemands();
-  }, [currentUser, subscribeToDemands]);
+    let unsubscribeEssences;
+    let unsubscribeDemands;
 
-  useEffect(() => {
-    if (!currentUser) return;
+    // Tüm veri yükleme ve senkronizasyon işlemlerini tek bir useEffect içinde yönetiyoruz
+    const setupListeners = async () => {
+      setLoading(true);
 
-    const unsubscribeEssences = subscribeToEssences((updatedEssences) => {
-      setEssences(updatedEssences);
+      // 1. Esansları dinlemeye başla (öncelikli olarak esans fiyatlarına ihtiyacımız var)
+      unsubscribeEssences = subscribeToEssences((updatedEssences) => {
+        const newEssencesMap = updatedEssences.reduce((acc, essence) => {
+          acc[essence.id] = essence;
+          return acc;
+        }, {});
+        setEssencesMap(newEssencesMap); // Esanslar güncellendiğinde map'i güncelle
+        
+        // Esanslar güncellendiğinde, mevcut taleplerin fiyatlarını da yeniden hesapla
+        // Bu, fiyatlar değiştiğinde tablonun otomatik güncellenmesini sağlar
+        setDemands((prevDemands) =>
+          prevDemands.map((demand) => {
+            const essence = newEssencesMap[demand.essenceId];
+            if (essence) {
+              // demand.amount * essence.price yaparak toplam tutarı hesaplıyoruz
+              const calculatedTotalPrice = demand.amount * essence.price;
+              return {
+                ...demand,
+                totalPrice: calculatedTotalPrice, // Talebin toplam fiyatını güncelle
+              };
+            }
+            return demand;
+          })
+        );
+      });
 
-      // Update totalPrice in demands based on the new essence prices
-      setDemands((prevDemands) =>
-        prevDemands.map((demand) => {
-          const essence = updatedEssences.find((e) => e.id === demand.essenceId);
+      // 2. Talepleri dinlemeye başla
+      unsubscribeDemands = subscribeToDemands((allDemands) => {
+        const userDemands = allDemands.filter(d => d.userId === currentUser.uid);
+
+        // Talepler geldiğinde, elimizdeki güncel esans bilgileriyle (essencesMap) fiyatları hesapla
+        // Bu, yeni talepler eklendiğinde veya mevcut talepler değiştiğinde doğru fiyatları gösterir
+        const updatedUserDemands = userDemands.map(demand => {
+          const essence = essencesMap[demand.essenceId]; // Güncel esans map'ini kullan
+          let calculatedTotalPrice = 0;
+
           if (essence) {
-            return {
-              ...demand,
-              // totalPrice'ı esansın güncel fiyatı ile güncelliyoruz
-              // Firebase'e kaydederken eğer 50 gramlık bir talepse, essence.price * 50 yapmanız gerekir.
-              // Şu anki durumda totalPrice sadece birim fiyatı tutuyor gibi görünüyor.
-              // Eğer totalPrice'ın toplam tutar olması bekleniyorsa: demand.amount * essence.price
-              totalPrice: essence.price, 
-            };
+            calculatedTotalPrice = demand.amount * essence.price;
+          } else {
+            // Eğer esans bilgisi henüz yüklenmediyse veya bulunamadıysa,
+            // mevcut totalPrice değerini kullan (güvenli bir fallback)
+            calculatedTotalPrice = parseFloat(demand.totalPrice) || 0;
           }
-          return demand;
-        })
-      );
-    });
+          
+          return {
+            ...demand,
+            // createdAt bir Firebase Timestamp objesi olabilir, Date objesine çeviriyoruz.
+            createdAt: demand.createdAt?.toDate ? demand.createdAt.toDate() : demand.createdAt,
+            totalPrice: calculatedTotalPrice,
+          };
+        }).sort((a, b) => {
+          // Tarihleri Date objesi olarak karşılaştır
+          const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+          const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+          return dateB - dateA; // En yeni tarihten eskiye doğru sırala
+        });
 
-    return () => unsubscribeEssences();
-  }, [currentUser, subscribeToEssences]);
+        setDemands(updatedUserDemands);
+        setLoading(false); // Veri yükleme tamamlandı
+      });
+    };
 
+    setupListeners(); // Dinleyicileri başlat
+
+    // Component unmount olduğunda abonelikleri temizle
+    return () => {
+      if (unsubscribeEssences) unsubscribeEssences();
+      if (unsubscribeDemands) unsubscribeDemands();
+    };
+  }, [currentUser, subscribeToDemands, subscribeToEssences, essencesMap]); // essencesMap bağımlılığı önemli!
 
   const handleDemandDelete = async (demandToDelete) => {
     try {
       await deleteDemand(demandToDelete.id);
-      setDemands(prevDemands => prevDemands.filter(demand => demand.id !== demandToDelete.id));
       setSnackbar({
         open: true,
         message: 'Talep başarıyla iptal edildi',
@@ -123,6 +146,23 @@ function ProfilePage() {
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
   };
+
+  // Yükleme durumu veya kullanıcı yoksa gösterilecek UI
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Typography>Yükleniyor...</Typography> {/* Basit bir yükleme mesajı */}
+      </Box>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6">Giriş yapmalısınız.</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ width: '100%', height: '100%', p: 2 }}>
@@ -189,7 +229,7 @@ function ProfilePage() {
                     <TableCell>Esans</TableCell>
                     <TableCell>Miktar</TableCell>
                     <TableCell>Tarih</TableCell>
-                    <TableCell>Birim Fiyat</TableCell> {/* Bu başlığı "Toplam Fiyat" olarak değiştirebilirsiniz */}
+                    <TableCell>Toplam Fiyat</TableCell> {/* Başlık güncellendi */}
                     <TableCell>İşlemler</TableCell>
                   </TableRow>
                 </TableHead>
@@ -199,7 +239,7 @@ function ProfilePage() {
                       <TableCell>{demand.essenceName}</TableCell>
                       <TableCell>{demand.amount} gr</TableCell>
                       <TableCell>
-                        {new Date(demand.createdAt).toLocaleDateString('tr-TR')}
+                        {demand.createdAt ? new Date(demand.createdAt).toLocaleDateString('tr-TR') : 'Bilinmiyor'}
                       </TableCell>
                       <TableCell>
                         {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(
