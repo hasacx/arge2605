@@ -51,6 +51,17 @@ function HomePage() {
   const [demandQuantities, setDemandQuantities] = useState({})
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
+  const maskUserName = (name) => {
+    if (!name || typeof name !== 'string') return 'Bilinmeyen';
+    const parts = name.split(' ');
+    if (parts.length > 1) {
+      const lastName = parts.pop();
+      const maskedLastName = lastName.charAt(0) + '***';
+      return [...parts, maskedLastName].join(' ');
+    }
+    return name.charAt(0) + '***';
+  };
+
   useEffect(() => {
     const unsubscribe = subscribeToEssences((updatedEssences) => {
       setEssences(updatedEssences)
@@ -333,7 +344,7 @@ function HomePage() {
                     borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
                   }}
                 >
-                  <Typography>{demand.userName}</Typography>
+                  <Typography>{currentUser?.role === 'admin' ? demand.userName : maskUserName(demand.userName)}</Typography>
                   <Typography>{demand.amount} gr</Typography>
                   <Typography>{new Date(demand.date).toLocaleDateString('tr-TR')}</Typography>
                 </Box>
@@ -623,9 +634,9 @@ function HomePage() {
                                   <TableBody>
                                     {demandsByEssence[essence.id].map((demand) => (
                                       <TableRow key={demand.id}>
-                                        <TableCell>{demand.userName}</TableCell>
-                                        <TableCell>{demand.amount}</TableCell>
-                                        <TableCell>{demand.date.toLocaleDateString()}</TableCell>
+                                        <TableCell>{currentUser?.role === 'admin' ? demand.userName : maskUserName(demand.userName)}</TableCell>
+                                        <TableCell>{demand.amount} gr</TableCell>
+                                        <TableCell>{new Date(demand.date).toLocaleDateString('tr-TR')}</TableCell>
                                       </TableRow>
                                     ))}
                                   </TableBody>
