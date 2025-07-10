@@ -53,13 +53,10 @@ function HomePage() {
 
   const maskUserName = (name) => {
     if (!name || typeof name !== 'string') return 'Bilinmeyen';
-    const parts = name.split(' ');
-    if (parts.length > 1) {
-      const lastName = parts.pop();
-      const maskedLastName = lastName.charAt(0) + '***';
-      return [...parts, maskedLastName].join(' ');
-    }
-    return name.charAt(0) + '***';
+    return name
+      .split(' ')
+      .map(part => (part.length > 0 ? part.charAt(0) + '***' : ''))
+      .join(' ');
   };
 
   useEffect(() => {
@@ -483,7 +480,7 @@ function HomePage() {
               color: 'warning.dark'
             }}
           >
-            250 Gram üstüne ulaşan esanslar kesin alımdır. 250 grama ulaştığı taktirde üstü mühim değildir, alım sonunda alınan miktar kadar sipariş geçilecektir.
+            Alımlarımız 250 gram ve katları şeklinde yapılmaktadır. Sipariş miktarı 250 gramın katı değilse, en yakın alt katı kadar (örneğin 550 gram ise 500 gram) değerlendirmeye alınır. Artan miktar, bir sonraki 250 gramlık eşiğe ulaşmadığı sürece siparişe dahil edilmez.
           </Typography>
         </Paper>
       </Box>
