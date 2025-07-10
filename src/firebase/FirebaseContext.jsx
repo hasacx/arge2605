@@ -18,7 +18,8 @@ import {
   where,
   onSnapshot,
   increment,
-  getDoc
+  getDoc,
+  runTransaction
 } from 'firebase/firestore';
 
 const FirebaseContext = createContext();
@@ -285,25 +286,51 @@ export const FirebaseProvider = ({ children }) => {
       if (!currentUser) {
         throw new Error("Kullanıcı girişi yapılmamış veya kullanıcı bilgileri yüklenemedi.");
       }
+
       const essenceRef = doc(db, 'essences', essenceId);
-      const essenceDocSnap = await getDoc(essenceRef);
-      if (!essenceDocSnap.exists()) {
-        throw new Error("Talep edilen esans bulunamadı.");
-      }
-      const essenceData = essenceDocSnap.data();
-      await addDoc(collection(db, 'demands'), {
-        essenceId,
-        userId: currentUser.uid,
-        userName: `${currentUser.firstName || 'Bilinmeyen'} ${currentUser.lastName || 'Kullanıcı'}`,
-        essenceName: essenceData.name,
-        essenceCode: essenceData.code,
-        ...demandData,
-        createdAt: new Date()
+
+      await runTransaction(db, async (transaction) => {
+        const essenceDoc = await transaction.get(essenceRef);
+        if (!essenceDoc.exists()) {
+          throw new Error("Talep edilen esans bulunamadı.");
+        }
+
+        const essenceData = essenceDoc.data();
+        const totalDemandBefore = essenceData.totalDemand || 0;
+
+        // demands koleksiyonuna yeni bir doküman referansı oluştur
+        const newDemandRef = doc(collection(db, 'demands'));
+
+        transaction.set(newDemandRef, {
+          essenceId,
+          userId: currentUser.uid,
+          userName: `${currentUser.firstName || 'Bilinmeyen'} ${currentUser.lastName || 'Kullanıcı'}`,
+          essenceName: essenceData.name,
+          essenceCode: essenceData.code,
+          ...demandData,
+          createdAt: new Date(),
+          totalDemandBefore: totalDemandBefore // Talep öncesi toplamı kaydet
+        });
+
+        const newTotalDemand = totalDemandBefore + (demandData.amount || 0);
+        transaction.update(essenceRef, { totalDemand: newTotalDemand });
       });
-      const newTotalDemand = (essenceData.totalDemand || 0) + (demandData.amount || 0);
-      await updateDoc(essenceRef, { totalDemand: newTotalDemand });
+
     } catch (error) {
       console.error("Error in addDemand:", error);
+      throw error;
+    }
+  };
+
+  const getUserDemands = async (userId) => {
+    try {
+      const q = query(collection(db, 'demands'), where('userId', '==', userId));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
       throw error;
     }
   };
@@ -333,19 +360,6 @@ export const FirebaseProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Error deleting demand:", error);
-      throw error;
-    }
-  };
-
-  const getUserDemands = async (userId) => {
-    try {
-      const q = query(collection(db, 'demands'), where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    } catch (error) {
       throw error;
     }
   };
