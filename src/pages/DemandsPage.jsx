@@ -156,11 +156,22 @@ function DemandsPage() {
       const demandsMap = new Map(); 
   
       for (const demand of demands) { 
-        const essence = essencesData[demand.essenceId]; 
-        if (!essence || essence.totalDemand < 250) { 
-          continue; 
-        } 
-  
+        const essence = essencesData[demand.essenceId];
+
+        // Yeni filtreleme mantığı
+        if (!essence || essence.totalDemand < 250 || demand.totalDemandBefore === undefined) {
+          continue; // Esans yoksa, toplam talep 250'den azsa veya talep eski sistemdense atla
+        }
+
+        // Mevcut 250g'lik dilimin başlangıcını hesapla
+        const bucketStart = Math.floor(essence.totalDemand / 250) * 250;
+
+        // Talebin bu dilime ait olup olmadığını kontrol et
+        // totalDemandBefore, bu talep yapılmadan önceki toplam taleptir.
+        if (demand.totalDemandBefore < bucketStart) {
+          continue; // Bu talep, mevcut gösterilen dilime ait değil, atla.
+        }
+
         const userData = users[demand.userId]; 
         if (!userData) { 
           console.warn("Eksik kullanıcı verisi:", demand.userId); 
