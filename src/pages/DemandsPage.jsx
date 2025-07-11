@@ -164,14 +164,13 @@ function DemandsPage() {
           continue;
         }
 
-        // İçinde bulunulan mevcut 250g'lik dilimi hesapla
-        const currentBucketIndex = Math.floor(essence.totalDemand / 250);
-        const bucketStart = currentBucketIndex * 250;
-        const bucketEnd = bucketStart + 250;
+        // Sadece tamamlanmış 250g'lik dilimleri göster
+        const completedBuckets = Math.floor(essence.totalDemand / 250);
+        const displayThreshold = completedBuckets * 250;
 
-        // Talebin, içinde bulunulan mevcut dilime ait olup olmadığını kontrol et
-        if (demand.totalDemandBefore < bucketStart || demand.totalDemandBefore >= bucketEnd) {
-          continue; // Bu talep, gösterilmesi gereken dilime ait değil, atla.
+        // Eğer hiç tamamlanmış dilim yoksa veya talep gösterilecek aralığın dışındaysa atla
+        if (displayThreshold === 0 || demand.totalDemandBefore >= displayThreshold) {
+          continue;
         }
 
         const userData = users[demand.userId]; 
