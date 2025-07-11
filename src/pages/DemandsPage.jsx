@@ -159,18 +159,18 @@ function DemandsPage() {
         const essence = essencesData[demand.essenceId];
 
         // Yeni filtreleme mantığı: Sadece tamamlanmış dilimleri göster
-        // Esans verisi yoksa veya talep eski sistemdense (totalDemandBefore tanımsız ise) atla.
-        if (!essence || demand.totalDemandBefore === undefined) {
-          continue;
+        if (!essence || essence.totalDemand < 250 || demand.totalDemandBefore === undefined) {
+          continue; // Esans yoksa, ilk 250g'lik dilim bile tamamlanmamışsa veya talep eski sistemdense atla
         }
 
-        // Sadece tamamlanmış 250g'lik dilimleri göster
-        const completedBuckets = Math.floor(essence.totalDemand / 250);
-        const displayThreshold = completedBuckets * 250;
+        // En son tamamlanmış olan 250g'lik dilimi hesapla
+        const lastCompletedBucketIndex = Math.floor(essence.totalDemand / 250) - 1;
+        const bucketStart = lastCompletedBucketIndex * 250;
+        const bucketEnd = bucketStart + 250;
 
-        // Eğer hiç tamamlanmış dilim yoksa veya talep gösterilecek aralığın dışındaysa atla
-        if (displayThreshold === 0 || demand.totalDemandBefore >= displayThreshold) {
-          continue;
+        // Talebin, en son tamamlanmış dilime ait olup olmadığını kontrol et
+        if (demand.totalDemandBefore < bucketStart || demand.totalDemandBefore >= bucketEnd) {
+          continue; // Bu talep, gösterilmesi gereken dilime ait değil, atla.
         }
 
         const userData = users[demand.userId]; 
