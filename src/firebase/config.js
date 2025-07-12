@@ -15,13 +15,13 @@ import { getAuth, connectAuthEmulator } from 'firebase/auth';
 
 // Gerçek Firebase yapılandırması
 export const firebaseConfig = {
-  apiKey: "AIzaSyCq1d0YLECfGbZ8dB_bV8QROoj2lP-5hz4",
-  authDomain: "esans-6d0aa.firebaseapp.com",
-  projectId: "esans-6d0aa",
-  storageBucket: "esans-6d0aa.firebasestorage.app",
-  messagingSenderId: "354183453900",
-  appId: "1:354183453900:web:a6e6fa27b9344dca2af669",
-  measurementId: "G-6ECM0W7WW2"
+  apiKey: "AIzaSyCLgkoD6jSfQHwcnOMN_Hv4l3tBLAN81tY",
+  authDomain: "esans-talep.firebaseapp.com",
+  projectId: "esans-talep",
+  storageBucket: "esans-talep.firebasestorage.app",
+  messagingSenderId: "448229172926",
+  appId: "1:448229172926:web:d788d08de6e09ae20a20ef",
+  measurementId: "G-X2YSBBYG9J"
 };
 
 // Firebase'i başlat
